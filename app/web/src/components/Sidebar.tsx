@@ -49,7 +49,7 @@ export function Sidebar({
           <div
             className="h-8 w-8 rounded-lg bg-accent
             flex items-center justify-center
-            shadow-[0_0_20px_-6px_var(--accent)]
+            shadow-sm
             transition-transform group-hover:scale-105"
           >
             <span

@@ -30,25 +30,25 @@ export function LoginPage() {
     >
       <div
         className="hidden lg:flex flex-1 relative overflow-hidden
-        border-r border-border"
+        border-r border-border bg-bg-2"
       >
         <div
           className="absolute inset-0"
           style={{
             backgroundImage:
               'radial-gradient(circle at 30% 30%, ' +
-              'rgba(255,184,77,0.18), transparent 50%),' +
+              'rgba(15,122,80,0.08), transparent 55%),' +
               'radial-gradient(circle at 70% 80%, ' +
-              'rgba(107,166,255,0.10), transparent 55%)',
+              'rgba(39,96,216,0.05), transparent 55%)',
           }}
         />
         <div
           className="absolute inset-0"
           style={{
             backgroundImage:
-              'linear-gradient(rgba(255,255,255,0.02) 1px, ' +
+              'linear-gradient(rgba(20,22,27,0.025) 1px, ' +
               'transparent 1px),' +
-              'linear-gradient(90deg, rgba(255,255,255,0.02) 1px, ' +
+              'linear-gradient(90deg, rgba(20,22,27,0.025) 1px, ' +
               'transparent 1px)',
             backgroundSize: '32px 32px',
           }}
@@ -60,8 +60,7 @@ export function LoginPage() {
           <div className="flex items-center gap-3">
             <div
               className="h-10 w-10 rounded-lg bg-accent
-              flex items-center justify-center
-              shadow-[0_0_30px_-4px_var(--accent)]"
+              flex items-center justify-center shadow-sm"
             >
               <span
                 className="font-display text-[18px] font-bold

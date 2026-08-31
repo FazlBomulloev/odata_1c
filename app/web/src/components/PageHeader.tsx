@@ -65,11 +65,11 @@ export function HeroMetric({
   return (
     <div
       className="relative overflow-hidden rounded-xl bg-surface
-      border border-border shadow-md px-8 py-6"
+      border border-border shadow-sm px-8 py-6"
     >
       <div
         className="absolute -top-24 -right-16 h-48 w-48 rounded-full
-        bg-accent/10 blur-3xl pointer-events-none"
+        bg-accent/5 blur-3xl pointer-events-none"
       />
       <div className="eyebrow mb-3">{label}</div>
       <div className="flex items-end gap-4">

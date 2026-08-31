@@ -4,50 +4,51 @@
 
 @layer base {
   :root {
-    --bg: #0E1116;
-    --bg-2: #12161D;
-    --surface: #171B22;
-    --surface-2: #1E232C;
-    --border: #262C36;
-    --border-2: #363E4B;
+    --bg: #F6F7F9;
+    --bg-2: #FBFBFC;
+    --surface: #FFFFFF;
+    --surface-2: #F1F2F5;
+    --border: #E8EAEE;
+    --border-2: #D6D9E0;
 
-    --text: #F1F3F7;
-    --text-2: #A8AEB9;
-    --text-3: #6A7180;
+    --text: #14161B;
+    --text-2: #565A66;
+    --text-3: #8B90A0;
 
-    --accent: #FFB84D;
-    --accent-hover: #FFC66B;
-    --accent-fg: #16181D;
-    --accent-tint: rgba(255, 184, 77, 0.12);
+    --accent: #0F7A50;
+    --accent-hover: #0C6644;
+    --accent-fg: #FFFFFF;
+    --accent-tint: rgba(15, 122, 80, 0.08);
 
-    --positive: #62D9A0;
-    --positive-tint: rgba(98, 217, 160, 0.12);
-    --negative: #FF8080;
-    --negative-tint: rgba(255, 128, 128, 0.12);
-    --warning: #FFB84D;
-    --warning-tint: rgba(255, 184, 77, 0.12);
-    --info: #6BA6FF;
-    --info-tint: rgba(107, 166, 255, 0.12);
+    --positive: #0F7A50;
+    --positive-tint: rgba(15, 122, 80, 0.08);
+    --negative: #C4384B;
+    --negative-tint: rgba(196, 56, 75, 0.08);
+    --warning: #B4570D;
+    --warning-tint: rgba(180, 87, 13, 0.08);
+    --info: #2760D8;
+    --info-tint: rgba(39, 96, 216, 0.08);
 
-    --wb: #B983FF;
-    --wb-tint: rgba(185, 131, 255, 0.14);
-    --ozon: #4D96FF;
-    --ozon-tint: rgba(77, 150, 255, 0.14);
-    --lamoda: #FF7A85;
-    --lamoda-tint: rgba(255, 122, 133, 0.14);
-    --retail: #62D9A0;
-    --retail-tint: rgba(98, 217, 160, 0.14);
-    --unknown: #6A7180;
-    --unknown-tint: rgba(106, 113, 128, 0.14);
+    --wb: #7B3FCF;
+    --wb-tint: rgba(123, 63, 207, 0.09);
+    --ozon: #1E5DD6;
+    --ozon-tint: rgba(30, 93, 214, 0.09);
+    --lamoda: #C4384B;
+    --lamoda-tint: rgba(196, 56, 75, 0.09);
+    --retail: #0F7A50;
+    --retail-tint: rgba(15, 122, 80, 0.09);
+    --unknown: #8B90A0;
+    --unknown-tint: rgba(139, 144, 160, 0.09);
 
     --radius-sm: 4px;
     --radius: 6px;
     --radius-lg: 10px;
     --radius-xl: 14px;
 
-    --shadow-sm: 0 1px 0 rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.02) inset;
-    --shadow-md: 0 4px 16px -6px rgba(0,0,0,0.5),
-                 0 0 0 1px rgba(255,255,255,0.03) inset;
+    --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04),
+                 0 0 0 1px rgba(16, 24, 40, 0.02);
+    --shadow-md: 0 4px 12px -4px rgba(16, 24, 40, 0.08),
+                 0 2px 4px -2px rgba(16, 24, 40, 0.04);
 
     --sidebar-w: 220px;
     --topbar-h: 52px;
@@ -67,22 +68,23 @@
     line-height: 1.5;
     font-feature-settings: 'ss01', 'cv11';
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
     background-image:
       radial-gradient(
-        ellipse 900px 500px at 20% -10%,
-        rgba(255, 184, 77, 0.05),
+        ellipse 900px 500px at 15% -10%,
+        rgba(15, 122, 80, 0.04),
         transparent 60%),
       radial-gradient(
         ellipse 700px 400px at 100% 100%,
-        rgba(107, 166, 255, 0.04),
+        rgba(39, 96, 216, 0.025),
         transparent 60%);
     background-attachment: fixed;
   }
 
   ::selection {
-    background: var(--accent);
-    color: var(--accent-fg);
+    background: var(--accent-tint);
+    color: var(--text);
   }
 
   input, select, textarea, button {
@@ -90,7 +92,6 @@
     color: inherit;
   }
 
-  /* Firefox scrollbar */
   * {
     scrollbar-width: thin;
     scrollbar-color: var(--border-2) transparent;
@@ -118,7 +119,7 @@
   .eyebrow {
     font-size: 10.5px;
     font-weight: 600;
-    letter-spacing: 0.11em;
+    letter-spacing: 0.09em;
     text-transform: uppercase;
     color: var(--text-3);
   }
@@ -141,11 +142,13 @@
 
   .surface-hover {
     transition: background-color 120ms ease,
-                border-color 120ms ease;
+                border-color 120ms ease,
+                box-shadow 120ms ease;
   }
   .surface-hover:hover {
-    background: var(--surface-2);
+    background: var(--surface);
     border-color: var(--border-2);
+    box-shadow: var(--shadow-sm);
   }
 
   .scrollbar-thin::-webkit-scrollbar {
