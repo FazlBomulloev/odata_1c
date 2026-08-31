@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --paper: #fbfaf6;
+    --card: #ffffff;
+    --ink: #131417;
+    --ink-2: #4b4e56;
+    --ink-3: #7f8189;
+    --rule: #e9e7de;
+    --rule-2: #dad6c9;
+    --wash: #f4f2ea;
+
+    --accent: #131417;
+    --accent-hover: #2a2c31;
+    --accent-tint: rgba(19, 20, 23, 0.08);
+    --accent-fg: #ffffff;
+
+    --positive: #166e3f;
+    --positive-tint: rgba(22, 110, 63, 0.09);
+    --negative: #a32e1c;
+    --negative-tint: rgba(163, 46, 28, 0.09);
+    --warning: #a5651b;
+    --warning-tint: rgba(165, 101, 27, 0.10);
+
+    --wb: #8842d6;
+    --wb-tint: rgba(136, 66, 214, 0.09);
+    --ozon: #0a4cd6;
+    --ozon-tint: rgba(10, 76, 214, 0.09);
+    --lamoda: #b41e1e;
+    --lamoda-tint: rgba(180, 30, 30, 0.09);
+    --retail: #166e3f;
+    --retail-tint: rgba(22, 110, 63, 0.09);
+    --unknown: #7f8189;
+    --unknown-tint: rgba(127, 129, 137, 0.09);
+
+    --radius: 4px;
+  }
+
+  html, body, #root {
+    height: 100%;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family:
+      -apple-system, BlinkMacSystemFont,
+      "Segoe UI Variable", "Segoe UI",
+      "Golos Text", Roboto, "Helvetica Neue",
+      Arial, system-ui, sans-serif;
+    font-size: 13.5px;
+    line-height: 1.5;
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: var(--accent-tint);
+    color: var(--ink);
+  }
+
+  input, select, textarea, button {
+    font: inherit;
+    color: inherit;
+  }
+}
+
+@layer utilities {
+  .font-mono {
+    font-family: "JetBrains Mono", ui-monospace,
+      "SF Mono", Menlo, Consolas, monospace;
+    font-feature-settings: "tnum" 1, "zero" 1;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .eyebrow {
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .hairline {
+    border-color: var(--rule);
+  }
+
+  .hairline-b {
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .hairline-t {
+    border-top: 1px solid var(--rule);
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: var(--rule-2);
+    border: 3px solid var(--paper);
+    border-radius: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: var(--ink-3);
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}

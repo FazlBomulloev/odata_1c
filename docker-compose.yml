@@ -1,0 +1,51 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: app/backend/Dockerfile
+    container_name: odata1c_backend
+    restart: unless-stopped
+    environment:
+      ODATA_BASE_URL: ${ODATA_BASE_URL}
+      ODATA_LOGIN: ${ODATA_LOGIN}
+      ODATA_PASSWORD: ${ODATA_PASSWORD}
+      ODATA_TIMEOUT: ${ODATA_TIMEOUT:-60}
+      ODATA_MAX_RETRIES: ${ODATA_MAX_RETRIES:-3}
+      ODATA_CONCURRENCY: ${ODATA_CONCURRENCY:-8}
+      DB_URL: sqlite+aiosqlite:////app/data/app.db
+      CORS_ORIGINS: http://localhost:8080,http://localhost:5173
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      SESSION_MAX_AGE: ${SESSION_MAX_AGE:-2592000}
+      OWNER_USERNAME: ${OWNER_USERNAME:-admin}
+      OWNER_PASSWORD: ${OWNER_PASSWORD:-}
+      SYNC_INTERVAL_HOURS: ${SYNC_INTERVAL_HOURS:-2}
+      SYNC_BACKFILL_DAYS: ${SYNC_BACKFILL_DAYS:-730}
+      SYNC_REFRESH_DAYS: ${SYNC_REFRESH_DAYS:-14}
+      SYNC_CHUNK_DAYS: ${SYNC_CHUNK_DAYS:-30}
+      SYNC_FULL_REBUILD_DAYS: ${SYNC_FULL_REBUILD_DAYS:-7}
+      SYNC_ENABLED: ${SYNC_ENABLED:-true}
+    volumes:
+      - ./data:/app/data
+    expose:
+      - "8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health')"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  web:
+    build:
+      context: .
+      dockerfile: app/web/Dockerfile
+    container_name: odata1c_web
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${WEB_PORT:-8080}:80"
