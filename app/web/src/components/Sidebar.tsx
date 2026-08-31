@@ -50,7 +50,7 @@ export function Sidebar({
           <div
             className="h-9 w-9 rounded-xl grad-accent
             flex items-center justify-center
-            shadow-[0_8px_24px_-6px_rgba(124,58,237,0.65)]
+            shadow-[0_8px_24px_-6px_rgba(8,145,178,0.6)]
             transition-transform duration-200
             group-hover:scale-105 group-hover:rotate-3"
           >
@@ -108,7 +108,7 @@ export function Sidebar({
                     style={{
                       backgroundImage:
                         'linear-gradient(90deg, ' +
-                        'rgba(124,58,237,0.14) 0%, ' +
+                        'rgba(8,145,178,0.14) 0%, ' +
                         'transparent 60%)',
                     }}
                   />
@@ -148,7 +148,7 @@ export function Sidebar({
               className="h-9 w-9 rounded-full grad-accent
               flex items-center justify-center
               text-12 font-display font-semibold text-white uppercase
-              shadow-[0_4px_12px_-4px_rgba(124,58,237,0.5)]"
+              shadow-[0_4px_12px_-4px_rgba(8,145,178,0.5)]"
             >
               {user.username.slice(0, 2)}
             </div>

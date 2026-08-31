@@ -7,8 +7,8 @@ type Size = 'sm' | 'md';
 const variants: Record<Variant, string> = {
   primary:
     'grad-accent text-white ' +
-    'shadow-[0_2px_8px_-2px_rgba(124,58,237,0.4)] ' +
-    'hover:shadow-[0_6px_16px_-4px_rgba(124,58,237,0.55)] ' +
+    'shadow-[0_2px_8px_-2px_rgba(8,145,178,0.35)] ' +
+    'hover:shadow-[0_6px_16px_-4px_rgba(8,145,178,0.5)] ' +
     'hover:-translate-y-px ' +
     'disabled:!bg-none disabled:!bg-surface-2 ' +
     'disabled:!text-text-3 disabled:!shadow-none',

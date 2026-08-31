@@ -85,10 +85,8 @@ const config: Config = {
         xl: 'var(--radius-xl)',
       },
       fontFamily: {
-        display: [
-          'Bricolage Grotesque', 'Manrope', 'system-ui', 'sans-serif',
-        ],
-        sans: ['Manrope', 'system-ui', 'sans-serif'],
+        display: ['Onest', 'Figtree', 'system-ui', 'sans-serif'],
+        sans: ['Figtree', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
       },
       fontSize: {

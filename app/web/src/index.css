@@ -4,47 +4,43 @@
 
 @layer base {
   :root {
-    --bg: #F7F7FB;
-    --bg-2: #EFEFF5;
+    --bg: #F5F8FA;
+    --bg-2: #EDF2F5;
     --surface: #FFFFFF;
-    --surface-2: #F3F3F8;
-    --border: #E7E7EE;
-    --border-2: #D0D1DA;
+    --surface-2: #F0F4F7;
+    --border: #E1E7EC;
+    --border-2: #C8D2DA;
 
-    --text: #0B0B12;
-    --text-2: #55566B;
-    --text-3: #8B8DA3;
+    --text: #0B1520;
+    --text-2: #4C5A6B;
+    --text-3: #7E8A99;
 
-    /* Dark sidebar palette (bold contrast) */
-    --nav-bg: #0F1013;
-    --nav-surface: #1A1C21;
-    --nav-border: #26282F;
-    --nav-text: #ECEDF0;
-    --nav-text-2: #9EA0AB;
-    --nav-text-3: #6B6E7A;
+    /* Dark sidebar — deep teal-blue instead of pure graphite */
+    --nav-bg: #0C1B24;
+    --nav-surface: #16262F;
+    --nav-border: #22343E;
+    --nav-text: #ECF3F5;
+    --nav-text-2: #A3B4BF;
+    --nav-text-3: #6E8290;
 
-    /* Signature accent — electric violet with pink partner */
-    --accent: #7C3AED;
-    --accent-2: #EC4899;
-    --accent-hover: #6D28D9;
+    /* Signature — teal → emerald */
+    --accent: #0891B2;
+    --accent-2: #10B981;
+    --accent-hover: #0E7490;
     --accent-fg: #FFFFFF;
-    --accent-tint: rgba(124, 58, 237, 0.10);
-    --accent-glow: 0 0 24px -4px rgba(124, 58, 237, 0.55);
+    --accent-tint: rgba(8, 145, 178, 0.10);
+    --accent-glow: 0 0 24px -4px rgba(8, 145, 178, 0.5);
     --accent-grad:
-      linear-gradient(135deg, #7C3AED 0%, #EC4899 100%);
-    --accent-grad-soft:
-      linear-gradient(135deg,
-        rgba(124, 58, 237, 0.12),
-        rgba(236, 72, 153, 0.12));
+      linear-gradient(135deg, #0891B2 0%, #10B981 100%);
 
     --positive: #059669;
-    --positive-tint: rgba(5, 150, 105, 0.09);
-    --negative: #E11D48;
-    --negative-tint: rgba(225, 29, 72, 0.09);
+    --positive-tint: rgba(5, 150, 105, 0.10);
+    --negative: #DC2626;
+    --negative-tint: rgba(220, 38, 38, 0.09);
     --warning: #D97706;
     --warning-tint: rgba(217, 119, 6, 0.10);
-    --info: #2563EB;
-    --info-tint: rgba(37, 99, 235, 0.09);
+    --info: #0284C7;
+    --info-tint: rgba(2, 132, 199, 0.09);
 
     --wb: #7C3AED;
     --wb-tint: rgba(124, 58, 237, 0.10);
@@ -52,10 +48,10 @@
     --ozon-tint: rgba(37, 99, 235, 0.10);
     --lamoda: #E11D48;
     --lamoda-tint: rgba(225, 29, 72, 0.10);
-    --retail: #059669;
-    --retail-tint: rgba(5, 150, 105, 0.10);
-    --unknown: #8B8DA3;
-    --unknown-tint: rgba(139, 141, 163, 0.10);
+    --retail: #10B981;
+    --retail-tint: rgba(16, 185, 129, 0.10);
+    --unknown: #7E8A99;
+    --unknown-tint: rgba(126, 138, 153, 0.10);
 
     --radius-sm: 4px;
     --radius: 8px;
@@ -63,16 +59,16 @@
     --radius-xl: 16px;
 
     --shadow-xs:
-      0 1px 2px rgba(11, 11, 18, 0.04);
+      0 1px 2px rgba(11, 21, 32, 0.04);
     --shadow-sm:
-      0 1px 2px rgba(11, 11, 18, 0.05),
-      0 0 0 1px rgba(11, 11, 18, 0.03);
+      0 1px 2px rgba(11, 21, 32, 0.05),
+      0 0 0 1px rgba(11, 21, 32, 0.03);
     --shadow-md:
-      0 4px 14px -4px rgba(11, 11, 18, 0.10),
-      0 2px 4px -2px rgba(11, 11, 18, 0.06);
+      0 4px 14px -4px rgba(11, 21, 32, 0.10),
+      0 2px 4px -2px rgba(11, 21, 32, 0.06);
     --shadow-lg:
-      0 20px 40px -12px rgba(11, 11, 18, 0.16),
-      0 8px 20px -6px rgba(11, 11, 18, 0.08);
+      0 20px 40px -12px rgba(11, 21, 32, 0.16),
+      0 8px 20px -6px rgba(11, 21, 32, 0.08);
 
     --sidebar-w: 232px;
     --topbar-h: 56px;
@@ -86,26 +82,26 @@
     background: var(--bg);
     color: var(--text);
     font-family:
-      'Manrope', -apple-system, BlinkMacSystemFont,
+      'Figtree', -apple-system, BlinkMacSystemFont,
       'Segoe UI Variable', 'Segoe UI', sans-serif;
-    font-size: 13.5px;
+    font-size: 14px;
     line-height: 1.5;
-    font-feature-settings: 'ss01', 'cv11';
+    font-feature-settings: 'ss01', 'ss03';
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
     background-image:
       radial-gradient(
         ellipse 1000px 600px at 5% -10%,
-        rgba(124, 58, 237, 0.10),
+        rgba(8, 145, 178, 0.08),
         transparent 60%),
       radial-gradient(
         ellipse 800px 500px at 100% 10%,
-        rgba(236, 72, 153, 0.06),
+        rgba(16, 185, 129, 0.06),
         transparent 60%),
       radial-gradient(
         ellipse 900px 500px at 60% 110%,
-        rgba(37, 99, 235, 0.05),
+        rgba(2, 132, 199, 0.05),
         transparent 60%);
     background-attachment: fixed;
   }
@@ -128,9 +124,7 @@
 
 @layer utilities {
   .font-display {
-    font-family: 'Bricolage Grotesque', 'Manrope',
-      system-ui, sans-serif;
-    font-variation-settings: 'wdth' 92, 'opsz' 24;
+    font-family: 'Onest', 'Figtree', system-ui, sans-serif;
     letter-spacing: -0.02em;
   }
 
@@ -145,9 +139,9 @@
   }
 
   .eyebrow {
-    font-size: 10.5px;
+    font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.10em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--text-3);
   }
@@ -197,13 +191,7 @@
   }
 
   .glass {
-    background: rgba(255, 255, 255, 0.72);
-    backdrop-filter: saturate(140%) blur(14px);
-    -webkit-backdrop-filter: saturate(140%) blur(14px);
-  }
-
-  .glass-dark {
-    background: rgba(15, 16, 19, 0.72);
+    background: rgba(245, 248, 250, 0.75);
     backdrop-filter: saturate(140%) blur(14px);
     -webkit-backdrop-filter: saturate(140%) blur(14px);
   }
@@ -223,7 +211,6 @@
     background: transparent;
   }
 
-  /* Sync dot: breathing + soft ring */
   .pulse-ring {
     position: relative;
   }
@@ -268,7 +255,6 @@
   .stagger > *:nth-child(6) { animation-delay: 200ms; }
   .stagger > *:nth-child(7) { animation-delay: 240ms; }
 
-  /* Soft gradient shine on cards */
   .shine {
     position: relative;
     overflow: hidden;
@@ -279,9 +265,9 @@
     inset: 0;
     background:
       linear-gradient(135deg,
-        rgba(124, 58, 237, 0.05) 0%,
+        rgba(8, 145, 178, 0.05) 0%,
         transparent 45%,
-        rgba(236, 72, 153, 0.05) 100%);
+        rgba(16, 185, 129, 0.05) 100%);
     pointer-events: none;
   }
 }

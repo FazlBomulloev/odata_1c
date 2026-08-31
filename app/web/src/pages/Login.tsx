@@ -35,9 +35,9 @@ export function LoginPage() {
           style={{
             backgroundImage:
               'radial-gradient(circle at 25% 25%, ' +
-              'rgba(124,58,237,0.35), transparent 55%),' +
+              'rgba(8,145,178,0.32), transparent 55%),' +
               'radial-gradient(circle at 75% 80%, ' +
-              'rgba(236,72,153,0.22), transparent 55%)',
+              'rgba(16,185,129,0.22), transparent 55%)',
           }}
         />
         <div
@@ -59,7 +59,7 @@ export function LoginPage() {
             <div
               className="h-11 w-11 rounded-xl grad-accent
               flex items-center justify-center
-              shadow-[0_10px_30px_-4px_rgba(124,58,237,0.6)]"
+              shadow-[0_10px_30px_-4px_rgba(8,145,178,0.55)]"
             >
               <span
                 className="font-display text-[20px] font-bold

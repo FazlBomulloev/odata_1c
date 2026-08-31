@@ -96,7 +96,6 @@ export function ChannelSplit({
             style={{
               width: `${(d.count / total) * 100}%`,
               background: colorFor(d.channel),
-              transition: 'width 400ms ease',
             }}
           />
         ))}
