@@ -58,7 +58,6 @@ async def _paginate(
     endpoint: str,
     params: dict,
 ) -> list[dict]:
-    """Постраничная выборка (последовательно, скип-паттерн)."""
     rows: list[dict] = []
     skip = 0
     while True:
@@ -86,7 +85,6 @@ async def _batch_by_keys(
     select: str = '',
     key_field: str = 'Ref_Key',
 ) -> list[dict]:
-    """Пакетно параллельно тянет строки по списку ключей."""
     unique = [k for k in set(keys) if k and k != EMPTY_GUID]
     if not unique:
         return []

@@ -128,14 +128,11 @@ app.include_router(auth_router)
 app.include_router(users_router)
 
 
-# Публичный health — без авторизации, для docker healthcheck.
 @app.get('/api/health')
 async def health() -> dict:
     return {'ok': True}
 
 
-# Все data-эндпоинты живут под require_user. Owner-only ручки
-# (users) висят на своём роутере в auth.py.
 data_router = APIRouter(dependencies=[Depends(require_user)])
 
 
@@ -435,12 +432,6 @@ async def api_gross_profit(
     req: GrossProfitRequest,
     session: AsyncSession = Depends(get_session),
 ):
-    """Валовая прибыль по номенклатуре из кэша Продажи/Turnovers.
-
-    Всегда возвращает агрегат: SUM по выбранным group_by-ключам.
-    По умолчанию (article, size) — как в отчёте УНФ. Пустой
-    group_by = один тотал по всему периоду.
-    """
     group_cols: list[ColumnElement] = []
     for key in req.group_by or []:
         col = _GP_GROUP_COLS.get(key)

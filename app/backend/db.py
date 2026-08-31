@@ -27,7 +27,6 @@ class Base(DeclarativeBase):
 
 
 class User(Base):
-    """Пользователь панели (owner или employee)."""
     __tablename__ = 'users'
 
     id: Mapped[int] = mapped_column(
@@ -52,7 +51,6 @@ class User(Base):
 
 
 class Run(Base):
-    """Лог вызовов API (какой метод, параметры, результат)."""
     __tablename__ = 'runs'
 
     id: Mapped[int] = mapped_column(
@@ -84,7 +82,6 @@ class Run(Base):
 
 
 class SyncRun(Base):
-    """Лог фоновых синхронизаций из 1С в локальную БД."""
     __tablename__ = 'sync_runs'
 
     id: Mapped[int] = mapped_column(
@@ -130,7 +127,6 @@ class Organization(Base):
 
 
 class StockSnapshot(Base):
-    """Плоская строка остатков на момент последнего синка."""
     __tablename__ = 'stock_snapshot'
 
     id: Mapped[int] = mapped_column(
@@ -178,7 +174,6 @@ Index(
 
 
 class Movement(Base):
-    """Одно нормализованное движение (за окно синка)."""
     __tablename__ = 'movements'
 
     id: Mapped[int] = mapped_column(
@@ -254,7 +249,6 @@ class Movement(Base):
 
 
 class Sale(Base):
-    """Одна нормализованная строка продажи/возврата."""
     __tablename__ = 'sales'
 
     id: Mapped[int] = mapped_column(
@@ -301,12 +295,6 @@ class Sale(Base):
 
 
 class SalesTurnover(Base):
-    """Строка регистра Продажи/Turnovers за конкретный месяц.
-
-    Гранулярность — (номенклатура, характеристика, склад, орг,
-    контрагент, месяц). Даёт колонки отчёта «Валовая прибыль по
-    номенклатуре»: количество, выручка, себестоимость, прибыль.
-    """
     __tablename__ = 'sales_turnover'
 
     id: Mapped[int] = mapped_column(

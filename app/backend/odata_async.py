@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 
 
 class AsyncOData1C:
-    """Асинхронный HTTP-клиент к OData 1С c семафором и retry."""
 
     def __init__(
         self,

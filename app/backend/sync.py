@@ -5,10 +5,9 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import and_, delete, select
 
-from odata_1c.movements import (
-    ORGS_CATALOG,
-    WAREHOUSES_CATALOG,
-)
+from odata_1c import OData1C
+from odata_1c.movements import ORGS_CATALOG, WAREHOUSES_CATALOG
+from odata_1c.turnover import get_sales_turnover
 
 from .config import (
     SYNC_BACKFILL_DAYS,
@@ -21,15 +20,13 @@ from .db import (
     Movement,
     Organization,
     Sale,
+    SalesTurnover,
     SessionLocal,
     StockSnapshot,
     SyncRun,
     Warehouse,
 )
 from .odata_async import AsyncOData1C
-from odata_1c.turnover import get_sales_turnover
-
-from .db import SalesTurnover
 from .services import (
     fetch_all_sales,
     fetch_catalog_names,
@@ -39,13 +36,12 @@ from .services import (
 
 logger = logging.getLogger(__name__)
 
-# Разрешаем ручному триггеру дождаться завершения текущего цикла,
-# а не запускать параллельно (двойная нагрузка на 1С).
+# Ручной триггер должен дождаться текущего цикла, а не запускать
+# параллельный — иначе двойная нагрузка на 1С.
 _lock = asyncio.Lock()
 
 
 async def _has_prior_success(kind: str) -> bool:
-    """Был ли уже успешный sync по этому виду."""
     async with SessionLocal() as session:
         q = (
             select(SyncRun.id)
@@ -59,7 +55,6 @@ async def _has_prior_success(kind: str) -> bool:
 
 
 async def _last_full_success_at(kind: str) -> datetime | None:
-    """Когда был последний успешный full-ребилд по виду."""
     async with SessionLocal() as session:
         q = (
             select(SyncRun.finished_at)
@@ -75,7 +70,6 @@ async def _last_full_success_at(kind: str) -> datetime | None:
 
 
 def _window(is_first: bool) -> tuple[datetime, datetime]:
-    """Границы выборки для movements/sales."""
     date_to = datetime.utcnow()
     days = SYNC_BACKFILL_DAYS if is_first else SYNC_REFRESH_DAYS
     return date_to - timedelta(days=days), date_to
@@ -86,7 +80,6 @@ def _iter_chunks(
     date_to: datetime,
     chunk_days: int,
 ):
-    """Итератор [start, end) чанков указанной ширины."""
     cur = date_from
     step = timedelta(days=chunk_days)
     while cur < date_to:
@@ -100,7 +93,6 @@ async def _record_sync(
     coro,
     full: bool = False,
 ) -> int:
-    """Запускает корутину-синк, пишет строку в sync_runs."""
     async with SessionLocal() as session:
         run = SyncRun(
             kind=kind, status='running', full=full,
@@ -162,7 +154,6 @@ async def sync_organizations(client: AsyncOData1C) -> int:
 
 
 async def sync_stock(client: AsyncOData1C) -> int:
-    """Полный replace таблицы stock_snapshot."""
     rows = await fetch_stock(client, only_positive=False)
     now = datetime.utcnow()
 
@@ -186,7 +177,6 @@ async def sync_stock(client: AsyncOData1C) -> int:
             )
             for r in rows
         ]
-        # Пакетно, чтобы не улететь по памяти при десятках тысяч.
         for chunk_start in range(0, len(objs), 500):
             session.add_all(objs[chunk_start:chunk_start + 500])
             await session.flush()
@@ -247,7 +237,6 @@ async def _sync_chunk_movements(
     date_to: datetime,
     now: datetime,
 ) -> int:
-    """DELETE в границах чанка + INSERT свежих строк. Одна транзакция."""
     rows = await fetch_movements(client, date_from, date_to)
     async with SessionLocal() as session:
         await session.execute(
@@ -294,12 +283,6 @@ async def sync_movements(
     client: AsyncOData1C,
     full: bool = False,
 ) -> int:
-    """Инкремент по period с чанкованным replace.
-
-    Первый прогон (или full=True) — SYNC_BACKFILL_DAYS. Дальше —
-    SYNC_REFRESH_DAYS (окно перекрытия). Окно нарезается на чанки
-    по SYNC_CHUNK_DAYS, каждый чанк — отдельная транзакция.
-    """
     is_first = full or not await _has_prior_success('movements')
     date_from, date_to = _window(is_first)
     now = datetime.utcnow()
@@ -326,7 +309,6 @@ async def sync_sales(
     client: AsyncOData1C,
     full: bool = False,
 ) -> int:
-    """Инкремент по date с чанкованным replace."""
     is_first = full or not await _has_prior_success('sales')
     date_from, date_to = _window(is_first)
     now = datetime.utcnow()
@@ -350,10 +332,8 @@ async def sync_sales(
 
 
 def _month_starts(date_from: datetime, date_to: datetime):
-    """Итератор [первый день месяца, первый день следующего)."""
     cur = datetime(date_from.year, date_from.month, 1)
     end = datetime(date_to.year, date_to.month, 1)
-    # включаем месяц date_to
     while cur <= end:
         if cur.month == 12:
             nxt = datetime(cur.year + 1, 1, 1)
@@ -364,21 +344,16 @@ def _month_starts(date_from: datetime, date_to: datetime):
 
 
 async def _sync_chunk_turnover(
-    client: AsyncOData1C,
     date_from: datetime,
     date_to: datetime,
     now: datetime,
 ) -> int:
-    """Один месяц: тянет Turnovers через синхронный клиент в
-    thread-pool executor, потому что get_sales_turnover — sync."""
-    import asyncio as _asyncio  # локально, чтобы не менять шапку
-    from odata_1c import OData1C
-
-    loop = _asyncio.get_running_loop()
+    # get_sales_turnover — синхронный (использует requests),
+    # уводим в executor, чтобы не блокировать event loop.
+    loop = asyncio.get_running_loop()
 
     def _load() -> list:
-        sync_client = OData1C()
-        return get_sales_turnover(sync_client, date_from, date_to)
+        return get_sales_turnover(OData1C(), date_from, date_to)
 
     records = await loop.run_in_executor(None, _load)
 
@@ -422,12 +397,6 @@ async def sync_sales_turnover(
     client: AsyncOData1C,
     full: bool = False,
 ) -> int:
-    """Инкремент по месяцам с полным replace каждого месяца.
-
-    Первый прогон (или full=True) — все месяцы за SYNC_BACKFILL_DAYS.
-    Дальше — только месяцы, пересекающиеся с последними
-    SYNC_REFRESH_DAYS днями (плюс перепроведения задним числом).
-    """
     is_first = (
         full or not await _has_prior_success('sales_turnover')
     )
@@ -441,17 +410,14 @@ async def sync_sales_turnover(
     )
     total = 0
     for cs, ce in _month_starts(date_from, date_to):
-        n = await _sync_chunk_turnover(client, cs, ce, now)
+        n = await _sync_chunk_turnover(cs, ce, now)
         total += n
-        logger.info(
-            '  месяц %s: %d строк', cs.date(), n,
-        )
+        logger.info('  месяц %s: %d строк', cs.date(), n)
     logger.info('Синк валовой прибыли: всего %d строк', total)
     return total
 
 
 async def _should_full_rebuild() -> bool:
-    """Пора ли автоматом форсить full-цикл."""
     threshold = timedelta(days=SYNC_FULL_REBUILD_DAYS)
     now = datetime.utcnow()
     for kind in ('movements', 'sales', 'sales_turnover'):
@@ -462,13 +428,6 @@ async def _should_full_rebuild() -> bool:
 
 
 async def run_sync_cycle(full: bool = False) -> None:
-    """Один полный проход синка.
-
-    Порядок: каталоги → остатки → движения → продажи. Флаг
-    full=True форсит полный пересчёт movements/sales за
-    SYNC_BACKFILL_DAYS, независимо от того, есть ли уже
-    данные в БД.
-    """
     if _lock.locked():
         logger.info('Синк уже идёт, пропускаю запуск')
         return
@@ -499,11 +458,6 @@ async def run_sync_cycle(full: bool = False) -> None:
 
 
 async def sync_loop() -> None:
-    """Бесконечный цикл: run_sync_cycle раз в N часов.
-
-    Раз в SYNC_FULL_REBUILD_DAYS дней автоматом форсит full=True,
-    чтобы поймать переоформления задним числом старше окна refresh.
-    """
     interval = SYNC_INTERVAL_HOURS * 3600
     while True:
         try:

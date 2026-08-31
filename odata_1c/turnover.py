@@ -1,16 +1,3 @@
-"""
-Валовая прибыль по номенклатуре — из регистра
-`AccumulationRegister_Продажи/Turnovers`.
-
-Возвращает список `TurnoverRecord`. Гранулярность строки —
-(номенклатура, характеристика, склад, организация, контрагент,
-месяц). Дальше группировать удобнее уже в SQL или в UI.
-
-1С OData для виртуальной таблицы Turnovers требует передавать
-период ПАРАМЕТРАМИ таблицы в скобках (`StartPeriod=...`,
-`EndPeriod=...`), а не через `$filter`. Иначе — 500.
-"""
-
 import logging
 from datetime import datetime
 
@@ -38,6 +25,8 @@ CONTRACTORS_CATALOG = 'Catalog_Контрагенты'
 
 
 def _turnovers_endpoint(date_from, date_to) -> str:
+    # Период — параметрами виртуальной таблицы в скобках;
+    # $filter по Period здесь отдаёт 500.
     d_from = _iso(date_from)
     d_to = _iso(date_to)
     return (
@@ -52,7 +41,6 @@ def _fetch_turnover_rows(
     date_from,
     date_to,
 ) -> list[dict]:
-    """Постранично тянет строки виртуальной таблицы."""
     if isinstance(date_from, datetime) and date_from < MIN_PERIOD:
         date_from = MIN_PERIOD
     endpoint = _turnovers_endpoint(date_from, date_to)
@@ -160,12 +148,6 @@ def get_sales_turnover(
     date_from,
     date_to,
 ) -> list[TurnoverRecord]:
-    """Строки регистра Продажи/Turnovers за период.
-
-    Одна строка — уникальная комбинация ключей + месяц. Даты
-    передаются целиком (без чанков) — вызывающий код при
-    необходимости сам режет на месяцы для бэкфилла.
-    """
     if isinstance(date_from, datetime) and date_from < MIN_PERIOD:
         date_from = MIN_PERIOD
 

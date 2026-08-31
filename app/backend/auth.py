@@ -25,7 +25,6 @@ users_router = APIRouter(prefix='/api/users', tags=['users'])
 
 
 def resolve_session_secret() -> str:
-    """Возвращает SESSION_SECRET из env или временный на время процесса."""
     if SESSION_SECRET:
         return SESSION_SECRET
     logger.warning(
@@ -36,7 +35,6 @@ def resolve_session_secret() -> str:
 
 
 async def ensure_owner() -> None:
-    """Создаёт owner-а при первом запуске, если таблица пуста."""
     async with SessionLocal() as session:
         q = select(User).where(User.role == ROLE_OWNER)
         exists = (await session.execute(q)).scalars().first()
@@ -58,17 +56,13 @@ async def ensure_owner() -> None:
         )
         session.add(user)
         await session.commit()
-        logger.info(
-            'Создан owner "%s" (это единоразово, дальше сотрудники '
-            'заводятся через UI).', OWNER_USERNAME,
-        )
+        logger.info('Создан owner "%s"', OWNER_USERNAME)
 
 
 async def require_user(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> User:
-    """Достаёт текущего пользователя из session-cookie."""
     user_id = request.session.get('user_id')
     if not user_id:
         raise HTTPException(status_code=401, detail='Нужна авторизация')
@@ -237,8 +231,6 @@ async def delete_user(
     if not user:
         raise HTTPException(status_code=404, detail='Не найдено')
     if user.role == ROLE_OWNER:
-        # На случай будущих сценариев с несколькими owner-ами —
-        # запретим удаление последнего.
         q = select(User).where(
             User.role == ROLE_OWNER, User.is_active.is_(True),
         )

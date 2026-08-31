@@ -33,7 +33,6 @@ def _make_basic_auth(login: str, password: str) -> str:
 
 
 class OData1C:
-    """HTTP-клиент для OData 1С."""
 
     def __init__(
         self,
