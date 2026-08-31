@@ -33,7 +33,7 @@ export function SyncStatus() {
       await api.syncRefresh(false);
       window.setTimeout(load, 1500);
     } catch {
-      // статус подтянется на следующем тике
+      // подтянется на следующем тике
     } finally {
       setBusy(false);
     }
@@ -42,7 +42,10 @@ export function SyncStatus() {
   const info = summarize(data);
 
   return (
-    <div className="flex items-center gap-2">
+    <div
+      className="flex items-center gap-3 pl-2.5 pr-1.5 h-8
+      rounded-lg bg-surface border border-border shadow-xs"
+    >
       <span
         className={cn(
           'flex items-center gap-2 text-11 tabular',
@@ -54,10 +57,13 @@ export function SyncStatus() {
       >
         <span
           className={cn(
-            'h-1.5 w-1.5 rounded-full',
-            info.tone === 'ok' && 'bg-positive dot-breathe',
-            info.tone === 'warn' && 'bg-warning dot-breathe',
-            info.tone === 'bad' && 'bg-negative',
+            'relative h-1.5 w-1.5 rounded-full',
+            info.tone === 'ok'
+              && 'bg-positive text-positive pulse-ring',
+            info.tone === 'warn'
+              && 'bg-warning text-warning dot-breathe',
+            info.tone === 'bad'
+              && 'bg-negative text-negative',
           )}
         />
         {info.label}
@@ -66,10 +72,10 @@ export function SyncStatus() {
         onClick={onRefresh}
         disabled={busy || info.anyRunning}
         className={cn(
-          'h-7 w-7 flex items-center justify-center rounded-md',
-          'text-text-3 hover:text-text hover:bg-surface',
+          'h-6 w-6 flex items-center justify-center rounded-md',
+          'text-text-3 hover:text-accent hover:bg-accent-tint',
           'disabled:opacity-50 disabled:cursor-not-allowed',
-          'transition-colors',
+          'transition-all duration-150',
         )}
         title="Запустить синхронизацию сейчас"
       >

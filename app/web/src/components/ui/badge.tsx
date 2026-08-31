@@ -18,11 +18,14 @@ const tones: Record<Tone, string> = {
   default:
     'bg-accent-tint text-accent ring-1 ring-inset ring-accent/20',
   positive:
-    'bg-positive-tint text-positive ring-1 ring-inset ring-positive/20',
+    'bg-positive-tint text-positive ring-1 ring-inset ' +
+    'ring-positive/20',
   negative:
-    'bg-negative-tint text-negative ring-1 ring-inset ring-negative/20',
+    'bg-negative-tint text-negative ring-1 ring-inset ' +
+    'ring-negative/20',
   warning:
-    'bg-warning-tint text-warning ring-1 ring-inset ring-warning/20',
+    'bg-warning-tint text-warning ring-1 ring-inset ' +
+    'ring-warning/25',
   info:
     'bg-info-tint text-info ring-1 ring-inset ring-info/20',
   wb:
@@ -51,7 +54,7 @@ export function Badge({
     <span
       className={cn(
         'inline-flex items-center gap-1 px-2 py-0.5',
-        'rounded-md text-10 font-medium tracking-wider uppercase',
+        'rounded-md text-10 font-semibold tracking-wider uppercase',
         tones[tone],
         className,
       )}

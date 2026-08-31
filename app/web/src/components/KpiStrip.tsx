@@ -27,7 +27,7 @@ export function KpiStrip({
   return (
     <div
       className={cn(
-        'grid gap-3 mb-6',
+        'grid gap-4 mb-8 stagger',
         className,
       )}
       style={{
@@ -38,21 +38,27 @@ export function KpiStrip({
       {items.map((it, i) => (
         <div
           key={i}
-          className="relative rounded-lg bg-surface border border-border
-          px-5 py-4 surface-hover shadow-sm"
+          className="group relative rounded-xl bg-surface
+          border border-border p-5 lift overflow-hidden shine
+          cursor-default"
         >
-          <div className="eyebrow mb-2.5">{it.label}</div>
+          <div
+            className="absolute inset-x-0 top-0 h-px opacity-0
+            group-hover:opacity-100 transition-opacity duration-300
+            grad-accent"
+          />
+          <div className="eyebrow mb-3">{it.label}</div>
           <div
             className={cn(
-              'font-display text-28 leading-none tracking-tight',
-              'font-medium tabular',
+              'font-display text-32 leading-none tracking-tight',
+              'font-semibold tabular',
               toneMap[it.tone ?? 'default'],
             )}
           >
             {it.value}
           </div>
           {it.hint && (
-            <div className="text-11 text-text-3 mt-2 tabular">
+            <div className="text-11 text-text-3 mt-2.5 tabular">
               {it.hint}
             </div>
           )}
@@ -82,7 +88,7 @@ export function ChannelSplit({
     <div className={cn('space-y-2.5', className)}>
       <div
         className="flex h-2 w-full overflow-hidden rounded-full
-        bg-surface-2"
+        bg-surface-2 shadow-inner"
       >
         {data.map((d) => (
           <span
@@ -90,11 +96,12 @@ export function ChannelSplit({
             style={{
               width: `${(d.count / total) * 100}%`,
               background: colorFor(d.channel),
+              transition: 'width 400ms ease',
             }}
           />
         ))}
       </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-11">
+      <div className="flex flex-wrap gap-x-5 gap-y-1 text-11">
         {data.map((d) => (
           <span
             key={d.channel}

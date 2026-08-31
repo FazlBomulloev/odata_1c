@@ -10,7 +10,7 @@ export function FilterBar({
     <div
       className={cn(
         'flex flex-wrap items-end gap-3 p-4 mb-6',
-        'rounded-lg bg-surface border border-border',
+        'rounded-xl bg-surface border border-border shadow-sm',
         className,
       )}
     >

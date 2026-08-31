@@ -22,7 +22,14 @@ const config: Config = {
           2: 'var(--text-2)',
           3: 'var(--text-3)',
         },
-        // Alias для существующих компонентов, чтобы не переписывать каждый:
+        nav: {
+          bg: 'var(--nav-bg)',
+          surface: 'var(--nav-surface)',
+          border: 'var(--nav-border)',
+          text: 'var(--nav-text)',
+          'text-2': 'var(--nav-text-2)',
+          'text-3': 'var(--nav-text-3)',
+        },
         paper: 'var(--bg)',
         card: 'var(--surface)',
         wash: 'var(--surface-2)',
@@ -37,6 +44,7 @@ const config: Config = {
         },
         accent: {
           DEFAULT: 'var(--accent)',
+          2: 'var(--accent-2)',
           hover: 'var(--accent-hover)',
           tint: 'var(--accent-tint)',
           fg: 'var(--accent-fg)',
@@ -57,25 +65,16 @@ const config: Config = {
           DEFAULT: 'var(--info)',
           tint: 'var(--info-tint)',
         },
-        wb: {
-          DEFAULT: 'var(--wb)',
-          tint: 'var(--wb-tint)',
-        },
-        ozon: {
-          DEFAULT: 'var(--ozon)',
-          tint: 'var(--ozon-tint)',
-        },
+        wb: { DEFAULT: 'var(--wb)', tint: 'var(--wb-tint)' },
+        ozon: { DEFAULT: 'var(--ozon)', tint: 'var(--ozon-tint)' },
         lamoda: {
-          DEFAULT: 'var(--lamoda)',
-          tint: 'var(--lamoda-tint)',
+          DEFAULT: 'var(--lamoda)', tint: 'var(--lamoda-tint)',
         },
         retail: {
-          DEFAULT: 'var(--retail)',
-          tint: 'var(--retail-tint)',
+          DEFAULT: 'var(--retail)', tint: 'var(--retail-tint)',
         },
         unknown: {
-          DEFAULT: 'var(--unknown)',
-          tint: 'var(--unknown-tint)',
+          DEFAULT: 'var(--unknown)', tint: 'var(--unknown-tint)',
         },
       },
       borderRadius: {
@@ -106,10 +105,13 @@ const config: Config = {
         '32': ['32px', { lineHeight: '36px' }],
         '40': ['40px', { lineHeight: '44px', letterSpacing: '-0.02em' }],
         '56': ['56px', { lineHeight: '60px', letterSpacing: '-0.03em' }],
+        '72': ['72px', { lineHeight: '76px', letterSpacing: '-0.03em' }],
       },
       boxShadow: {
+        xs: 'var(--shadow-xs)',
         sm: 'var(--shadow-sm)',
         md: 'var(--shadow-md)',
+        lg: 'var(--shadow-lg)',
       },
     },
   },

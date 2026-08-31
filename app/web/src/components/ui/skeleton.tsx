@@ -17,12 +17,15 @@ export function Skeleton({
 
 export function TableSkeleton({ rows = 10 }: { rows?: number }) {
   return (
-    <div className="border border-border rounded-lg overflow-hidden bg-surface">
+    <div
+      className="border border-border rounded-xl overflow-hidden
+      bg-surface shadow-sm"
+    >
       {Array.from({ length: rows }).map((_, i) => (
         <div
           key={i}
           className={cn(
-            'flex items-center gap-4 px-4 py-3',
+            'flex items-center gap-4 px-4 py-3.5',
             i > 0 && 'hairline-t',
           )}
         >
@@ -43,7 +46,7 @@ export function ProgressBar() {
       className="h-0.5 w-full bg-border overflow-hidden rounded-sm"
     >
       <div
-        className="h-full w-1/3 bg-accent rounded-sm"
+        className="h-full w-1/3 grad-accent rounded-sm"
         style={{
           animation: 'slide 1.2s ease-in-out infinite',
         }}
