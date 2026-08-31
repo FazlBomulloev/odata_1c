@@ -548,7 +548,13 @@ async def api_stock(
     q = select(StockSnapshot)
     if conds:
         q = q.where(*conds)
-    q = q.order_by(StockSnapshot.article, StockSnapshot.warehouse)
+    # Товары без артикула (прочие ТМЦ / оборудование) — в конец списка,
+    # чтобы первые страницы показывали основную одежду.
+    q = q.order_by(
+        (StockSnapshot.article == '').asc(),
+        StockSnapshot.article,
+        StockSnapshot.warehouse,
+    )
     rows = (await session.execute(q)).scalars().all()
     return await _cached_response(
         'stock', 'stock', [_stock_dict(r) for r in rows],

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/input';
 import { PageHeader } from '@/components/PageHeader';
@@ -86,7 +86,7 @@ const columns: Column<SaleRow>[] = [
 ];
 
 export function SalesPage() {
-  const range = defaultRange(30);
+  const range = defaultRange(90);
   const [mode, setMode] = useState<Mode>('all');
   const [from, setFrom] = useState(toDateInput(range.from));
   const [to, setTo] = useState(toDateInput(range.to));
@@ -141,6 +141,11 @@ export function SalesPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div>

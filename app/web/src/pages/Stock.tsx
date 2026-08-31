@@ -53,6 +53,8 @@ export function StockPage() {
   useEffect(() => {
     api.warehouses().then(setWarehouses).catch(() => {});
     api.organizations().then(setOrgs).catch(() => {});
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const rows = (result?.records as StockRow[]) || [];

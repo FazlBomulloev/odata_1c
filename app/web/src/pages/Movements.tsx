@@ -77,7 +77,7 @@ const KINDS = [
 ];
 
 export function MovementsPage() {
-  const range = defaultRange(7);
+  const range = defaultRange(30);
   const [from, setFrom] = useState(toDateInput(range.from));
   const [to, setTo] = useState(toDateInput(range.to));
   const [kind, setKind] = useState('all');
@@ -92,6 +92,8 @@ export function MovementsPage() {
   useEffect(() => {
     api.warehouses().then(setWarehouses).catch(() => {});
     api.organizations().then(setOrgs).catch(() => {});
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const rows = (result?.records as MoveRow[]) || [];
