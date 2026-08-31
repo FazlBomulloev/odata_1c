@@ -6,6 +6,7 @@ export type Tone =
   | 'positive'
   | 'negative'
   | 'warning'
+  | 'info'
   | 'wb'
   | 'ozon'
   | 'lamoda'
@@ -15,25 +16,27 @@ export type Tone =
 
 const tones: Record<Tone, string> = {
   default:
-    'bg-[color:var(--accent-tint)] text-[color:var(--accent)]',
+    'bg-accent-tint text-accent ring-1 ring-inset ring-accent/20',
   positive:
-    'bg-positive-tint text-positive',
+    'bg-positive-tint text-positive ring-1 ring-inset ring-positive/20',
   negative:
-    'bg-negative-tint text-negative',
+    'bg-negative-tint text-negative ring-1 ring-inset ring-negative/20',
   warning:
-    'bg-warning-tint text-warning',
+    'bg-warning-tint text-warning ring-1 ring-inset ring-warning/20',
+  info:
+    'bg-info-tint text-info ring-1 ring-inset ring-info/20',
   wb:
-    'bg-wb-tint text-wb',
+    'bg-wb-tint text-wb ring-1 ring-inset ring-wb/25',
   ozon:
-    'bg-ozon-tint text-ozon',
+    'bg-ozon-tint text-ozon ring-1 ring-inset ring-ozon/25',
   lamoda:
-    'bg-lamoda-tint text-lamoda',
+    'bg-lamoda-tint text-lamoda ring-1 ring-inset ring-lamoda/25',
   retail:
-    'bg-retail-tint text-retail',
+    'bg-retail-tint text-retail ring-1 ring-inset ring-retail/25',
   unknown:
-    'bg-unknown-tint text-unknown',
+    'bg-unknown-tint text-unknown ring-1 ring-inset ring-unknown/25',
   muted:
-    'bg-wash text-ink-2',
+    'bg-surface-2 text-text-2 ring-1 ring-inset ring-border',
 };
 
 export interface BadgeProps
@@ -47,8 +50,8 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 px-1.5 py-0.5',
-        'rounded-sm text-11 font-medium tracking-wide',
+        'inline-flex items-center gap-1 px-2 py-0.5',
+        'rounded-md text-10 font-medium tracking-wider uppercase',
         tones[tone],
         className,
       )}

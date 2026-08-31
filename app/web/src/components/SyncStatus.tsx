@@ -1,16 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { api, type SyncStatusResponse } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
-/**
- * Плашка «данные обновлены N назад» + кнопка обновления.
- * Показывает самое старое finished_at из всех kinds — то есть
- * «худшую» свежесть по любому из синков.
- */
 export function SyncStatus() {
   const [data, setData] = useState<SyncStatusResponse | null>(null);
   const [busy, setBusy] = useState(false);
-  const [tick, setTick] = useState(0);
+  const [, setTick] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -37,21 +33,21 @@ export function SyncStatus() {
       await api.syncRefresh(false);
       window.setTimeout(load, 1500);
     } catch {
-      // ignore — статус подтянется на следующем интервале
+      // статус подтянется на следующем тике
     } finally {
       setBusy(false);
     }
   };
 
-  const info = summarize(data, tick);
+  const info = summarize(data);
 
   return (
     <div className="flex items-center gap-2">
       <span
         className={cn(
-          'flex items-center gap-1.5 text-11',
-          info.tone === 'ok' && 'text-ink-3',
-          info.tone === 'warn' && 'text-ink-2',
+          'flex items-center gap-2 text-11 tabular',
+          info.tone === 'ok' && 'text-text-2',
+          info.tone === 'warn' && 'text-warning',
           info.tone === 'bad' && 'text-negative',
         )}
         title={info.title}
@@ -59,8 +55,8 @@ export function SyncStatus() {
         <span
           className={cn(
             'h-1.5 w-1.5 rounded-full',
-            info.tone === 'ok' && 'bg-positive',
-            info.tone === 'warn' && 'bg-yellow-500',
+            info.tone === 'ok' && 'bg-positive dot-breathe',
+            info.tone === 'warn' && 'bg-warning dot-breathe',
             info.tone === 'bad' && 'bg-negative',
           )}
         />
@@ -70,14 +66,20 @@ export function SyncStatus() {
         onClick={onRefresh}
         disabled={busy || info.anyRunning}
         className={cn(
-          'text-11 px-2 h-6 rounded border border-rule',
-          'text-ink-2 hover:text-ink hover:bg-wash',
-          'disabled:opacity-60 disabled:cursor-not-allowed',
+          'h-7 w-7 flex items-center justify-center rounded-md',
+          'text-text-3 hover:text-text hover:bg-surface',
+          'disabled:opacity-50 disabled:cursor-not-allowed',
           'transition-colors',
         )}
-        title="Запустить фоновую синхронизацию"
+        title="Запустить синхронизацию сейчас"
       >
-        {busy || info.anyRunning ? 'синк…' : 'обновить'}
+        <RefreshCw
+          className={cn(
+            'h-3.5 w-3.5',
+            (busy || info.anyRunning) && 'animate-spin',
+          )}
+          strokeWidth={2}
+        />
       </button>
     </div>
   );
@@ -90,10 +92,7 @@ type Info = {
   anyRunning: boolean;
 };
 
-function summarize(
-  data: SyncStatusResponse | null,
-  _tick: number,
-): Info {
+function summarize(data: SyncStatusResponse | null): Info {
   if (!data || data.runs.length === 0) {
     return {
       label: 'нет данных',
@@ -123,8 +122,7 @@ function summarize(
     )
     .join('\n');
 
-  const title =
-    `Интервал: ${data.interval_hours} ч\n` + kindsLine;
+  const title = `Интервал: ${data.interval_hours} ч\n` + kindsLine;
 
   if (anyRunning) {
     return {
@@ -144,7 +142,7 @@ function summarize(
   }
 
   const ageMs = now - oldest.getTime();
-  const label = 'обновлено ' + fmtAgo(ageMs);
+  const label = fmtAgo(ageMs);
   const staleAfter = data.interval_hours * 3600 * 1000 * 2;
   const tone: Info['tone'] = anyError
     ? 'bad'
@@ -156,7 +154,7 @@ function summarize(
 
 function fmtAgo(ms: number): string {
   const sec = Math.floor(ms / 1000);
-  if (sec < 60) return `${sec} с назад`;
+  if (sec < 60) return `${sec}с назад`;
   const min = Math.floor(sec / 60);
   if (min < 60) return `${min} мин назад`;
   const hr = Math.floor(min / 60);

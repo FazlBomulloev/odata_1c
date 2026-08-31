@@ -11,10 +11,10 @@ export type KpiItem = {
 const toneMap: Record<
   NonNullable<KpiItem['tone']>, string
 > = {
-  default: 'text-ink',
+  default: 'text-text',
   positive: 'text-positive',
   negative: 'text-negative',
-  muted: 'text-ink-3',
+  muted: 'text-text-3',
 };
 
 export function KpiStrip({
@@ -27,9 +27,7 @@ export function KpiStrip({
   return (
     <div
       className={cn(
-        'grid gap-px bg-rule border border-rule rounded',
-        'overflow-hidden mb-6',
-        `grid-cols-2 md:grid-cols-${Math.min(items.length, 4)}`,
+        'grid gap-3 mb-6',
         className,
       )}
       style={{
@@ -38,19 +36,23 @@ export function KpiStrip({
       }}
     >
       {items.map((it, i) => (
-        <div key={i} className="bg-card px-5 py-4">
-          <div className="eyebrow mb-2">{it.label}</div>
+        <div
+          key={i}
+          className="relative rounded-lg bg-surface border border-border
+          px-5 py-4 surface-hover shadow-sm"
+        >
+          <div className="eyebrow mb-2.5">{it.label}</div>
           <div
             className={cn(
-              'text-28 leading-none tracking-tight',
-              it.mono !== false && 'font-mono tabular',
+              'font-display text-28 leading-none tracking-tight',
+              'font-medium tabular',
               toneMap[it.tone ?? 'default'],
             )}
           >
             {it.value}
           </div>
           {it.hint && (
-            <div className="text-12 text-ink-3 mt-1.5">
+            <div className="text-11 text-text-3 mt-2 tabular">
               {it.hint}
             </div>
           )}
@@ -77,8 +79,11 @@ export function ChannelSplit({
     return 'var(--unknown)';
   };
   return (
-    <div className={cn('space-y-2', className)}>
-      <div className="flex h-1.5 w-full overflow-hidden rounded-sm">
+    <div className={cn('space-y-2.5', className)}>
+      <div
+        className="flex h-2 w-full overflow-hidden rounded-full
+        bg-surface-2"
+      >
         {data.map((d) => (
           <span
             key={d.channel}
@@ -93,14 +98,14 @@ export function ChannelSplit({
         {data.map((d) => (
           <span
             key={d.channel}
-            className="flex items-center gap-1.5 text-ink-2"
+            className="flex items-center gap-1.5 text-text-2"
           >
             <span
-              className="h-2 w-2 rounded-sm"
+              className="h-2 w-2 rounded-full"
               style={{ background: colorFor(d.channel) }}
             />
             {d.channel}{' '}
-            <span className="text-ink-3 font-mono tabular">
+            <span className="text-text-3 tabular">
               {((d.count / total) * 100).toFixed(0)}%
             </span>
           </span>

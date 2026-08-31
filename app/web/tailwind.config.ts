@@ -5,17 +5,35 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        paper: 'var(--paper)',
-        card: 'var(--card)',
-        wash: 'var(--wash)',
+        bg: {
+          DEFAULT: 'var(--bg)',
+          2: 'var(--bg-2)',
+        },
+        surface: {
+          DEFAULT: 'var(--surface)',
+          2: 'var(--surface-2)',
+        },
+        border: {
+          DEFAULT: 'var(--border)',
+          2: 'var(--border-2)',
+        },
+        text: {
+          DEFAULT: 'var(--text)',
+          2: 'var(--text-2)',
+          3: 'var(--text-3)',
+        },
+        // Alias для существующих компонентов, чтобы не переписывать каждый:
+        paper: 'var(--bg)',
+        card: 'var(--surface)',
+        wash: 'var(--surface-2)',
         ink: {
-          DEFAULT: 'var(--ink)',
-          2: 'var(--ink-2)',
-          3: 'var(--ink-3)',
+          DEFAULT: 'var(--text)',
+          2: 'var(--text-2)',
+          3: 'var(--text-3)',
         },
         rule: {
-          DEFAULT: 'var(--rule)',
-          2: 'var(--rule-2)',
+          DEFAULT: 'var(--border)',
+          2: 'var(--border-2)',
         },
         accent: {
           DEFAULT: 'var(--accent)',
@@ -34,6 +52,10 @@ const config: Config = {
         warning: {
           DEFAULT: 'var(--warning)',
           tint: 'var(--warning-tint)',
+        },
+        info: {
+          DEFAULT: 'var(--info)',
+          tint: 'var(--info-tint)',
         },
         wb: {
           DEFAULT: 'var(--wb)',
@@ -58,11 +80,18 @@ const config: Config = {
       },
       borderRadius: {
         DEFAULT: 'var(--radius)',
-        sm: '2px',
-        md: '4px',
-        lg: '6px',
+        sm: 'var(--radius-sm)',
+        md: 'var(--radius)',
+        lg: 'var(--radius-lg)',
+        xl: 'var(--radius-xl)',
+      },
+      fontFamily: {
+        display: ['Space Grotesk', 'Inter', 'system-ui', 'sans-serif'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
       },
       fontSize: {
+        '10': ['10.5px', { lineHeight: '14px' }],
         '11': ['11px', { lineHeight: '16px' }],
         '12': ['12px', { lineHeight: '16px' }],
         '13': ['13px', { lineHeight: '18px' }],
@@ -73,6 +102,12 @@ const config: Config = {
         '22': ['22px', { lineHeight: '28px' }],
         '28': ['28px', { lineHeight: '32px' }],
         '32': ['32px', { lineHeight: '36px' }],
+        '40': ['40px', { lineHeight: '44px', letterSpacing: '-0.02em' }],
+        '56': ['56px', { lineHeight: '60px', letterSpacing: '-0.03em' }],
+      },
+      boxShadow: {
+        sm: 'var(--shadow-sm)',
+        md: 'var(--shadow-md)',
       },
     },
   },

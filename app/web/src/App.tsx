@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { TopNav, type PageKey } from '@/components/TopNav';
+import { Sidebar, type PageKey } from '@/components/Sidebar';
+import { Topbar } from '@/components/Topbar';
 import { SalesPage } from '@/pages/Sales';
 import { MovementsPage } from '@/pages/Movements';
 import { StockPage } from '@/pages/Stock';
@@ -24,10 +25,15 @@ function AppInner() {
   if (loading) {
     return (
       <div
-        className="min-h-screen bg-paper flex items-center
-        justify-center text-13 text-ink-3"
+        className="min-h-screen bg-bg flex items-center
+        justify-center"
       >
-        Загрузка…
+        <div className="flex items-center gap-3 text-13 text-text-3">
+          <span
+            className="h-2 w-2 rounded-full bg-accent dot-breathe"
+          />
+          загрузка
+        </div>
       </div>
     );
   }
@@ -41,27 +47,22 @@ function AppInner() {
     page === 'users' && !isOwner ? 'sales' : page;
 
   return (
-    <div className="min-h-screen bg-paper">
-      <TopNav current={current} onSelect={setPage} />
-      <main className="max-w-[1440px] mx-auto px-8 py-10">
-        {current === 'sales' && <SalesPage />}
-        {current === 'gross_profit' && <GrossProfitPage />}
-        {current === 'movements' && <MovementsPage />}
-        {current === 'stock' && <StockPage />}
-        {current === 'history' && <HistoryPage />}
-        {current === 'users' && isOwner && <UsersPage />}
-      </main>
-      <footer className="max-w-[1440px] mx-auto px-8 pb-8 mt-16">
-        <div className="hairline-t pt-4 flex items-center
-        justify-between text-11 text-ink-3">
-          <span>
-            intreid · odata gateway · v0.3
-          </span>
-          <span className="font-mono">
-            Intreid_UNF_Copy4
-          </span>
-        </div>
-      </footer>
+    <div className="min-h-screen bg-bg text-text">
+      <Sidebar current={current} onSelect={setPage} />
+      <div className="pl-[var(--sidebar-w)]">
+        <Topbar page={current} />
+        <main
+          key={current}
+          className="max-w-[1600px] mx-auto px-8 py-8 fade-in"
+        >
+          {current === 'sales' && <SalesPage />}
+          {current === 'gross_profit' && <GrossProfitPage />}
+          {current === 'movements' && <MovementsPage />}
+          {current === 'stock' && <StockPage />}
+          {current === 'history' && <HistoryPage />}
+          {current === 'users' && isOwner && <UsersPage />}
+        </main>
+      </div>
     </div>
   );
 }

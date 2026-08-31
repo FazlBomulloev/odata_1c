@@ -9,7 +9,8 @@ export function FilterBar({
   return (
     <div
       className={cn(
-        'flex flex-wrap items-end gap-3 pb-4 hairline-b mb-5',
+        'flex flex-wrap items-end gap-3 p-4 mb-6',
+        'rounded-lg bg-surface border border-border',
         className,
       )}
     >
@@ -27,7 +28,7 @@ export function Field({
 }) {
   return (
     <div className={cn('flex flex-col min-w-[140px]', className)}>
-      <span className="eyebrow mb-1">{label}</span>
+      <span className="eyebrow mb-1.5">{label}</span>
       {children}
     </div>
   );

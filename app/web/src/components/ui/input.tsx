@@ -2,13 +2,13 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 const fieldBase =
-  'h-9 w-full rounded bg-card text-13.5 text-ink ' +
-  'border border-rule px-2.5 ' +
-  'transition-colors duration-100 ' +
-  'placeholder:text-ink-3 ' +
-  'hover:border-rule-2 ' +
-  'focus:outline-none focus:border-[color:var(--accent)] ' +
-  'focus:ring-1 focus:ring-[color:var(--accent)] ' +
+  'h-9 w-full rounded-md bg-surface text-13.5 text-text ' +
+  'border border-border px-3 ' +
+  'transition-all duration-150 ' +
+  'placeholder:text-text-3 ' +
+  'hover:border-border-2 ' +
+  'focus:outline-none focus:border-accent ' +
+  'focus:ring-1 focus:ring-accent ' +
   'disabled:opacity-50 disabled:cursor-not-allowed';
 
 export const Input = React.forwardRef<
@@ -31,18 +31,18 @@ export const Select = React.forwardRef<
   return (
     <select
       ref={ref}
-      className={cn(fieldBase, 'pr-6 appearance-none', className)}
+      className={cn(fieldBase, 'pr-7 appearance-none', className)}
       style={{
         backgroundImage:
           "url(\"data:image/svg+xml;utf8," +
           "<svg xmlns='http://www.w3.org/2000/svg' " +
           "width='10' height='6' viewBox='0 0 10 6'>" +
-          "<path d='M1 1l4 4 4-4' stroke='%237F8189' " +
+          "<path d='M1 1l4 4 4-4' stroke='%236A7180' " +
           "stroke-width='1.4' fill='none' " +
           "stroke-linecap='round' stroke-linejoin='round'/>" +
           "</svg>\")",
         backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right 8px center',
+        backgroundPosition: 'right 10px center',
       }}
       {...props}
     >
@@ -57,7 +57,7 @@ export function Label({
 }: React.LabelHTMLAttributes<HTMLLabelElement>) {
   return (
     <label
-      className={cn('eyebrow block mb-1', className)}
+      className={cn('eyebrow block mb-1.5', className)}
       {...props}
     />
   );

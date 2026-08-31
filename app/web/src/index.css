@@ -4,39 +4,53 @@
 
 @layer base {
   :root {
-    --paper: #fbfaf6;
-    --card: #ffffff;
-    --ink: #131417;
-    --ink-2: #4b4e56;
-    --ink-3: #7f8189;
-    --rule: #e9e7de;
-    --rule-2: #dad6c9;
-    --wash: #f4f2ea;
+    --bg: #0E1116;
+    --bg-2: #12161D;
+    --surface: #171B22;
+    --surface-2: #1E232C;
+    --border: #262C36;
+    --border-2: #363E4B;
 
-    --accent: #131417;
-    --accent-hover: #2a2c31;
-    --accent-tint: rgba(19, 20, 23, 0.08);
-    --accent-fg: #ffffff;
+    --text: #F1F3F7;
+    --text-2: #A8AEB9;
+    --text-3: #6A7180;
 
-    --positive: #166e3f;
-    --positive-tint: rgba(22, 110, 63, 0.09);
-    --negative: #a32e1c;
-    --negative-tint: rgba(163, 46, 28, 0.09);
-    --warning: #a5651b;
-    --warning-tint: rgba(165, 101, 27, 0.10);
+    --accent: #FFB84D;
+    --accent-hover: #FFC66B;
+    --accent-fg: #16181D;
+    --accent-tint: rgba(255, 184, 77, 0.12);
 
-    --wb: #8842d6;
-    --wb-tint: rgba(136, 66, 214, 0.09);
-    --ozon: #0a4cd6;
-    --ozon-tint: rgba(10, 76, 214, 0.09);
-    --lamoda: #b41e1e;
-    --lamoda-tint: rgba(180, 30, 30, 0.09);
-    --retail: #166e3f;
-    --retail-tint: rgba(22, 110, 63, 0.09);
-    --unknown: #7f8189;
-    --unknown-tint: rgba(127, 129, 137, 0.09);
+    --positive: #62D9A0;
+    --positive-tint: rgba(98, 217, 160, 0.12);
+    --negative: #FF8080;
+    --negative-tint: rgba(255, 128, 128, 0.12);
+    --warning: #FFB84D;
+    --warning-tint: rgba(255, 184, 77, 0.12);
+    --info: #6BA6FF;
+    --info-tint: rgba(107, 166, 255, 0.12);
 
-    --radius: 4px;
+    --wb: #B983FF;
+    --wb-tint: rgba(185, 131, 255, 0.14);
+    --ozon: #4D96FF;
+    --ozon-tint: rgba(77, 150, 255, 0.14);
+    --lamoda: #FF7A85;
+    --lamoda-tint: rgba(255, 122, 133, 0.14);
+    --retail: #62D9A0;
+    --retail-tint: rgba(98, 217, 160, 0.14);
+    --unknown: #6A7180;
+    --unknown-tint: rgba(106, 113, 128, 0.14);
+
+    --radius-sm: 4px;
+    --radius: 6px;
+    --radius-lg: 10px;
+    --radius-xl: 14px;
+
+    --shadow-sm: 0 1px 0 rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.02) inset;
+    --shadow-md: 0 4px 16px -6px rgba(0,0,0,0.5),
+                 0 0 0 1px rgba(255,255,255,0.03) inset;
+
+    --sidebar-w: 220px;
+    --topbar-h: 52px;
   }
 
   html, body, #root {
@@ -44,36 +58,55 @@
   }
 
   body {
-    background: var(--paper);
-    color: var(--ink);
+    background: var(--bg);
+    color: var(--text);
     font-family:
-      -apple-system, BlinkMacSystemFont,
-      "Segoe UI Variable", "Segoe UI",
-      "Golos Text", Roboto, "Helvetica Neue",
-      Arial, system-ui, sans-serif;
+      'Inter', -apple-system, BlinkMacSystemFont,
+      'Segoe UI Variable', 'Segoe UI', Roboto, sans-serif;
     font-size: 13.5px;
     line-height: 1.5;
-    font-feature-settings: "ss01", "cv11";
+    font-feature-settings: 'ss01', 'cv11';
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    background-image:
+      radial-gradient(
+        ellipse 900px 500px at 20% -10%,
+        rgba(255, 184, 77, 0.05),
+        transparent 60%),
+      radial-gradient(
+        ellipse 700px 400px at 100% 100%,
+        rgba(107, 166, 255, 0.04),
+        transparent 60%);
+    background-attachment: fixed;
   }
 
   ::selection {
-    background: var(--accent-tint);
-    color: var(--ink);
+    background: var(--accent);
+    color: var(--accent-fg);
   }
 
   input, select, textarea, button {
     font: inherit;
     color: inherit;
   }
+
+  /* Firefox scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-2) transparent;
+  }
 }
 
 @layer utilities {
+  .font-display {
+    font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+    font-feature-settings: 'ss01', 'ss02';
+  }
+
   .font-mono {
-    font-family: "JetBrains Mono", ui-monospace,
-      "SF Mono", Menlo, Consolas, monospace;
-    font-feature-settings: "tnum" 1, "zero" 1;
+    font-family: 'JetBrains Mono', ui-monospace,
+      'SF Mono', Menlo, Consolas, monospace;
+    font-feature-settings: 'tnum' 1, 'zero' 1, 'ss01' 1;
   }
 
   .tabular {
@@ -82,37 +115,65 @@
 
   .eyebrow {
     font-size: 10.5px;
-    font-weight: 500;
-    letter-spacing: 0.08em;
+    font-weight: 600;
+    letter-spacing: 0.11em;
     text-transform: uppercase;
-    color: var(--ink-3);
+    color: var(--text-3);
   }
 
   .hairline {
-    border-color: var(--rule);
+    border: 1px solid var(--border);
   }
-
   .hairline-b {
-    border-bottom: 1px solid var(--rule);
+    border-bottom: 1px solid var(--border);
+  }
+  .hairline-t {
+    border-top: 1px solid var(--border);
   }
 
-  .hairline-t {
-    border-top: 1px solid var(--rule);
+  .surface {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+
+  .surface-hover {
+    transition: background-color 120ms ease,
+                border-color 120ms ease;
+  }
+  .surface-hover:hover {
+    background: var(--surface-2);
+    border-color: var(--border-2);
   }
 
   .scrollbar-thin::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: var(--rule-2);
-    border: 3px solid var(--paper);
+    background: var(--border-2);
     border-radius: 8px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background: var(--ink-3);
+    background: var(--text-3);
   }
   .scrollbar-thin::-webkit-scrollbar-track {
     background: transparent;
+  }
+
+  .dot-breathe {
+    animation: dot-breathe 2.4s ease-in-out infinite;
+  }
+  @keyframes dot-breathe {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.55; transform: scale(0.85); }
+  }
+
+  .fade-in {
+    animation: fade-in 220ms ease-out both;
+  }
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: none; }
   }
 }

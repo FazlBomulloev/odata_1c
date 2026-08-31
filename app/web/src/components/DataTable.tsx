@@ -90,10 +90,11 @@ export function DataTable<T extends Record<string, unknown>>({
     <div>
       <div className="flex flex-wrap items-center gap-3 mb-3">
         {searchable && (
-          <div className="relative w-64">
+          <div className="relative w-72">
             <Search
-              className="absolute left-2.5 top-2.5 h-3.5 w-3.5
-              text-ink-3 pointer-events-none"
+              className="absolute left-3 top-2.5 h-3.5 w-3.5
+              text-text-3 pointer-events-none"
+              strokeWidth={2}
             />
             <Input
               placeholder="Найти в таблице"
@@ -106,10 +107,11 @@ export function DataTable<T extends Record<string, unknown>>({
             />
           </div>
         )}
-        <span className="text-11 text-ink-3 font-mono tabular">
+        <span className="text-11 text-text-3 font-mono tabular">
           {sorted.length.toLocaleString('ru-RU')}
           {query && data.length !== sorted.length &&
-            ` из ${data.length.toLocaleString('ru-RU')}`}
+            ` / ${data.length.toLocaleString('ru-RU')}`}
+          {' записей'}
         </span>
 
         <div className="ml-auto flex items-center gap-2">
@@ -119,16 +121,19 @@ export function DataTable<T extends Record<string, unknown>>({
             onClick={() => downloadCSV(sorted, filename)}
             disabled={sorted.length === 0}
           >
-            <Download className="h-3 w-3" /> CSV
+            <Download className="h-3 w-3" strokeWidth={2} /> CSV
           </Button>
         </div>
       </div>
 
-      <div className="border border-rule rounded bg-card overflow-hidden">
+      <div
+        className="rounded-lg overflow-hidden bg-surface
+        border border-border shadow-sm"
+      >
         <div className="overflow-x-auto scrollbar-thin">
           <table className="w-full text-13">
             <thead>
-              <tr className="hairline-b bg-wash/60">
+              <tr className="border-b border-border">
                 {columns.map((c) => {
                   const isSorted = sort?.key === c.key;
                   const Icon = sort?.dir === 'desc' ? ArrowDown : ArrowUp;
@@ -136,11 +141,12 @@ export function DataTable<T extends Record<string, unknown>>({
                     <th
                       key={c.key}
                       className={cn(
-                        'text-left font-medium eyebrow',
-                        'px-3 py-2.5 whitespace-nowrap select-none',
-                        'cursor-pointer hover:text-ink',
+                        'text-left eyebrow font-semibold',
+                        'px-4 py-3 whitespace-nowrap select-none',
+                        'cursor-pointer hover:text-text',
+                        'bg-bg-2',
                         c.numeric && 'text-right',
-                        isSorted && 'text-ink',
+                        isSorted && '!text-accent',
                         c.headerClass,
                       )}
                       onClick={() => toggleSort(c.key)}
@@ -165,8 +171,8 @@ export function DataTable<T extends Record<string, unknown>>({
                 <tr
                   key={i}
                   className={cn(
-                    i > 0 && 'hairline-t',
-                    'hover:bg-wash/60 transition-colors',
+                    i > 0 && 'border-t border-border',
+                    'hover:bg-surface-2/60 transition-colors',
                   )}
                 >
                   {columns.map((c) => {
@@ -180,7 +186,7 @@ export function DataTable<T extends Record<string, unknown>>({
                       content = fmtNumber(raw as number);
                     } else if (raw === null || raw === undefined) {
                       content = (
-                        <span className="text-ink-3">—</span>
+                        <span className="text-text-3">—</span>
                       );
                     } else {
                       content = String(raw);
@@ -189,10 +195,10 @@ export function DataTable<T extends Record<string, unknown>>({
                       <td
                         key={c.key}
                         className={cn(
-                          'px-3 py-2 whitespace-nowrap text-ink',
+                          'px-4 py-2.5 whitespace-nowrap text-text',
                           c.mono && 'font-mono tabular',
                           c.numeric && 'text-right font-mono tabular',
-                          c.date && 'text-ink-2',
+                          c.date && 'text-text-2',
                           c.className,
                         )}
                       >
@@ -206,7 +212,7 @@ export function DataTable<T extends Record<string, unknown>>({
                 <tr>
                   <td
                     colSpan={columns.length}
-                    className="text-center text-ink-3 py-12 text-13"
+                    className="text-center text-text-3 py-14 text-13"
                   >
                     {emptyMessage}
                   </td>
@@ -218,14 +224,17 @@ export function DataTable<T extends Record<string, unknown>>({
       </div>
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-3 text-11 text-ink-3">
+        <div
+          className="flex items-center justify-between mt-3
+          text-11 text-text-3"
+        >
           <span>
-            Стр.{' '}
-            <span className="font-mono tabular text-ink-2">
+            Страница{' '}
+            <span className="font-mono tabular text-text-2">
               {pageSafe}
             </span>{' '}
             из{' '}
-            <span className="font-mono tabular text-ink-2">
+            <span className="font-mono tabular text-text-2">
               {totalPages}
             </span>
           </span>
@@ -242,7 +251,7 @@ export function DataTable<T extends Record<string, unknown>>({
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={pageSafe <= 1}
             >
-              ‹ Пред
+              ‹
             </Button>
             <Button
               variant="ghost" size="sm"
@@ -251,7 +260,7 @@ export function DataTable<T extends Record<string, unknown>>({
               }
               disabled={pageSafe >= totalPages}
             >
-              След ›
+              ›
             </Button>
             <Button
               variant="ghost" size="sm"
