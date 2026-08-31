@@ -31,14 +31,12 @@ from odata_1c.movements import (
 from odata_1c.sales import (
     CHANNEL_RETAIL,
     CHANNEL_UNKNOWN,
-    COMMISSION_RECORDER_TYPE,
     CONTRACTS,
     DOC_COMMISSION,
     DOC_COMMISSION_RETURNS,
     DOC_COMMISSION_SALES,
     DOC_RETAIL,
     DOC_RETAIL_SALES,
-    INCOME_EXPENSE_REG,
     TYPE_RETURN,
     TYPE_SALE,
     _resolve_channel,
@@ -200,37 +198,44 @@ def _size_from(
     return size or None
 
 
-async def _fetch_commission_warehouses(
+SALES_REGISTER = 'AccumulationRegister_Продажи'
+
+
+async def _fetch_recorder_dims(
     client: AsyncOData1C,
     date_from: datetime,
     date_to: datetime,
 ) -> dict:
-    """{Recorder_Key: Склад_Key} для ОтчётаКомиссионера.
+    """{Recorder_Key: (Склад_Key, Организация_Key)} из регистра Продажи.
 
-    Склад в шапке комиссионера не хранится; берём из регистра
-    ДоходыИРасходы, куда документ пишет проводки со складом.
+    Регистр AccumulationRegister_Продажи для каждой строки хранит
+    реальный Склад_Key и Организация_Key. Матчим по Recorder (это
+    Ref_Key документа-регистратора — ОтчетКомиссионера,
+    ОтчетОРозничныхПродажах, РасходнаяНакладная).
     """
     if date_from < MIN_PERIOD:
         date_from = MIN_PERIOD
-    flt = (
-        f"Period ge datetime'{_iso(date_from)}' and "
-        f"Period le datetime'{_iso(date_to)}' and "
-        f"Recorder_Type eq '{COMMISSION_RECORDER_TYPE}'"
+    endpoint = (
+        f"{SALES_REGISTER}/Turnovers("
+        f"StartPeriod=datetime'{_iso(date_from)}',"
+        f"EndPeriod=datetime'{_iso(date_to)}')"
     )
     rows = await _paginate(
-        client, INCOME_EXPENSE_REG,
-        {
-            '$filter': flt,
-            '$select': 'Recorder,СтруктурнаяЕдиница_Key',
-        },
+        client, endpoint,
+        {'$select': 'Документ,Склад_Key,Организация_Key'},
     )
     result: dict = {}
     for r in rows:
-        rec = r.get('Recorder', '') or ''
-        wh = r.get('СтруктурнаяЕдиница_Key', '') or ''
-        if not rec or not wh or wh == EMPTY_GUID:
+        rec = r.get('Документ') or ''
+        wh = r.get('Склад_Key') or ''
+        org = r.get('Организация_Key') or ''
+        if not rec:
             continue
-        result.setdefault(rec, wh)
+        prev = result.get(rec, ('', ''))
+        result[rec] = (
+            prev[0] or (wh if wh != EMPTY_GUID else ''),
+            prev[1] or (org if org != EMPTY_GUID else ''),
+        )
     return result
 
 
@@ -286,10 +291,10 @@ async def fetch_marketplace_sales(
         wanted = set(headers_by_ref)
 
     refs = list(wanted)
-    rows_sales, rows_returns, wh_by_ref = await asyncio.gather(
+    rows_sales, rows_returns, dims_by_ref = await asyncio.gather(
         _batch_by_keys(client, DOC_COMMISSION_SALES, refs),
         _batch_by_keys(client, DOC_COMMISSION_RETURNS, refs),
-        _fetch_commission_warehouses(client, date_from, date_to),
+        _fetch_recorder_dims(client, date_from, date_to),
     )
 
     nom_keys: set = set()
@@ -302,11 +307,16 @@ async def fetch_marketplace_sales(
         if ck and ck != EMPTY_GUID:
             char_keys.add(ck)
 
-    org_keys = {
+    org_keys: set = {
         (h.get('Организация_Key') or '')
         for h in headers if h['Ref_Key'] in wanted
     }
-    wh_keys = set(wh_by_ref.values())
+    wh_keys: set = set()
+    for wh, org in dims_by_ref.values():
+        if wh:
+            wh_keys.add(wh)
+        if org:
+            org_keys.add(org)
 
     (
         nomenclature, characteristics,
@@ -349,11 +359,11 @@ async def fetch_marketplace_sales(
             qty = float(row.get('Количество', 0) or 0) * sign
             amount = float(row.get('Сумма', 0) or 0) * sign
 
-            wh_key = wh_by_ref.get(ref) or ''
-            warehouse = (
-                warehouse_names.get(wh_key) or wh_key or None
-            )
-            org_key = hdr.get('Организация_Key') or ''
+            wh_key, org_key_reg = dims_by_ref.get(ref, ('', ''))
+            warehouse = None
+            if wh_key:
+                warehouse = warehouse_names.get(wh_key) or wh_key
+            org_key = hdr.get('Организация_Key') or org_key_reg or ''
             organization = None
             if org_key and org_key != EMPTY_GUID:
                 organization = (
