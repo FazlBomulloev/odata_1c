@@ -54,3 +54,11 @@ SESSION_COOKIE_SECURE = os.getenv(
 # Учётка owner-а создаётся при первом запуске, если пуста таблица users.
 OWNER_USERNAME = os.getenv('OWNER_USERNAME', 'admin')
 OWNER_PASSWORD = os.getenv('OWNER_PASSWORD', '')
+
+# Полностью отключить проверку авторизации (temporary bypass).
+# При false — все /api/* открыты, require_user возвращает
+# синтетического owner-а, LoginPage на фронте не показывается.
+# Всю логику логина код сохраняет, включить обратно = снять флаг.
+AUTH_ENABLED = os.getenv('AUTH_ENABLED', 'true').lower() in (
+    '1', 'true', 'yes', 'y',
+)

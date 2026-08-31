@@ -189,7 +189,9 @@ export function GrossProfitPage() {
         },
       },
       {
-        key: 'unit_cost', header: 'С/с ед. ₽', numeric: true,
+        key: 'unit_cost',
+        header: 'Себест., ₽ / шт.',
+        numeric: true,
         format: (v) => fmtMoney(Number(v ?? 0)),
       },
     );

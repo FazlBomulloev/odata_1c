@@ -31,12 +31,14 @@ from odata_1c.movements import (
 from odata_1c.sales import (
     CHANNEL_RETAIL,
     CHANNEL_UNKNOWN,
+    COMMISSION_RECORDER_TYPE,
     CONTRACTS,
     DOC_COMMISSION,
     DOC_COMMISSION_RETURNS,
     DOC_COMMISSION_SALES,
     DOC_RETAIL,
     DOC_RETAIL_SALES,
+    INCOME_EXPENSE_REG,
     TYPE_RETURN,
     TYPE_SALE,
     _resolve_channel,
@@ -198,6 +200,40 @@ def _size_from(
     return size or None
 
 
+async def _fetch_commission_warehouses(
+    client: AsyncOData1C,
+    date_from: datetime,
+    date_to: datetime,
+) -> dict:
+    """{Recorder_Key: Склад_Key} для ОтчётаКомиссионера.
+
+    Склад в шапке комиссионера не хранится; берём из регистра
+    ДоходыИРасходы, куда документ пишет проводки со складом.
+    """
+    if date_from < MIN_PERIOD:
+        date_from = MIN_PERIOD
+    flt = (
+        f"Period ge datetime'{_iso(date_from)}' and "
+        f"Period le datetime'{_iso(date_to)}' and "
+        f"Recorder_Type eq '{COMMISSION_RECORDER_TYPE}'"
+    )
+    rows = await _paginate(
+        client, INCOME_EXPENSE_REG,
+        {
+            '$filter': flt,
+            '$select': 'Recorder,СтруктурнаяЕдиница_Key',
+        },
+    )
+    result: dict = {}
+    for r in rows:
+        rec = r.get('Recorder', '') or ''
+        wh = r.get('СтруктурнаяЕдиница_Key', '') or ''
+        if not rec or not wh or wh == EMPTY_GUID:
+            continue
+        result.setdefault(rec, wh)
+    return result
+
+
 async def fetch_marketplace_sales(
     client: AsyncOData1C,
     date_from: datetime,
@@ -214,7 +250,7 @@ async def fetch_marketplace_sales(
         client, DOC_COMMISSION,
         {
             '$filter': flt,
-            '$select': 'Ref_Key,Date,Договор_Key',
+            '$select': 'Ref_Key,Date,Договор_Key,Организация_Key',
             '$orderby': 'Date',
         },
     )
@@ -250,9 +286,10 @@ async def fetch_marketplace_sales(
         wanted = set(headers_by_ref)
 
     refs = list(wanted)
-    rows_sales, rows_returns = await asyncio.gather(
+    rows_sales, rows_returns, wh_by_ref = await asyncio.gather(
         _batch_by_keys(client, DOC_COMMISSION_SALES, refs),
         _batch_by_keys(client, DOC_COMMISSION_RETURNS, refs),
+        _fetch_commission_warehouses(client, date_from, date_to),
     )
 
     nom_keys: set = set()
@@ -265,7 +302,16 @@ async def fetch_marketplace_sales(
         if ck and ck != EMPTY_GUID:
             char_keys.add(ck)
 
-    nomenclature, characteristics = await asyncio.gather(
+    org_keys = {
+        (h.get('Организация_Key') or '')
+        for h in headers if h['Ref_Key'] in wanted
+    }
+    wh_keys = set(wh_by_ref.values())
+
+    (
+        nomenclature, characteristics,
+        organization_names, warehouse_names,
+    ) = await asyncio.gather(
         _resolve_by_keys(
             client, NOMENCLATURE, nom_keys,
             select='Ref_Key,Description,Артикул',
@@ -274,6 +320,8 @@ async def fetch_marketplace_sales(
             client, CHARACTERISTICS, char_keys,
             select='Ref_Key,Description',
         ),
+        _resolve_names(client, org_keys, ORGS_CATALOG),
+        _resolve_names(client, wh_keys, WAREHOUSES_CATALOG),
     )
 
     out: list[dict] = []
@@ -300,6 +348,18 @@ async def fetch_marketplace_sales(
             size = _size_from(ck, characteristics, article or '')
             qty = float(row.get('Количество', 0) or 0) * sign
             amount = float(row.get('Сумма', 0) or 0) * sign
+
+            wh_key = wh_by_ref.get(ref) or ''
+            warehouse = (
+                warehouse_names.get(wh_key) or wh_key or None
+            )
+            org_key = hdr.get('Организация_Key') or ''
+            organization = None
+            if org_key and org_key != EMPTY_GUID:
+                organization = (
+                    organization_names.get(org_key) or org_key
+                )
+
             out.append({
                 'nomenclature_key': nk,
                 'characteristic_key': ck or None,
@@ -310,6 +370,8 @@ async def fetch_marketplace_sales(
                 'amount': amount,
                 'date': _parse_dt(hdr.get('Date')),
                 'type': sale_type,
+                'warehouse': warehouse,
+                'organization': organization,
             })
     return out
 
@@ -329,7 +391,10 @@ async def fetch_retail_sales(
         client, DOC_RETAIL,
         {
             '$filter': flt,
-            '$select': 'Ref_Key,Date',
+            '$select': (
+                'Ref_Key,Date,Организация_Key,'
+                'СтруктурнаяЕдиница_Key'
+            ),
             '$orderby': 'Date',
         },
     )
@@ -348,7 +413,16 @@ async def fetch_retail_sales(
             nom_keys.add(nk)
         if ck and ck != EMPTY_GUID:
             char_keys.add(ck)
-    nomenclature, characteristics = await asyncio.gather(
+
+    org_keys = {(h.get('Организация_Key') or '') for h in headers}
+    wh_keys = {
+        (h.get('СтруктурнаяЕдиница_Key') or '') for h in headers
+    }
+
+    (
+        nomenclature, characteristics,
+        organization_names, warehouse_names,
+    ) = await asyncio.gather(
         _resolve_by_keys(
             client, NOMENCLATURE, nom_keys,
             select='Ref_Key,Description,Артикул',
@@ -357,6 +431,8 @@ async def fetch_retail_sales(
             client, CHARACTERISTICS, char_keys,
             select='Ref_Key,Description',
         ),
+        _resolve_names(client, org_keys, ORGS_CATALOG),
+        _resolve_names(client, wh_keys, WAREHOUSES_CATALOG),
     )
 
     out: list[dict] = []
@@ -379,6 +455,18 @@ async def fetch_retail_sales(
         sale_type = (
             TYPE_RETURN if qty < 0 or amount < 0 else TYPE_SALE
         )
+
+        wh_key = hdr.get('СтруктурнаяЕдиница_Key') or ''
+        warehouse = None
+        if wh_key and wh_key != EMPTY_GUID:
+            warehouse = warehouse_names.get(wh_key) or wh_key
+        org_key = hdr.get('Организация_Key') or ''
+        organization = None
+        if org_key and org_key != EMPTY_GUID:
+            organization = (
+                organization_names.get(org_key) or org_key
+            )
+
         out.append({
             'nomenclature_key': nk,
             'characteristic_key': ck or None,
@@ -389,6 +477,8 @@ async def fetch_retail_sales(
             'amount': amount,
             'date': _parse_dt(hdr.get('Date')),
             'type': sale_type,
+            'warehouse': warehouse,
+            'organization': organization,
         })
     return out
 

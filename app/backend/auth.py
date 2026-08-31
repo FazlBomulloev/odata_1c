@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import (
+    AUTH_ENABLED,
     OWNER_PASSWORD,
     OWNER_USERNAME,
     SESSION_SECRET,
@@ -24,6 +25,18 @@ router = APIRouter(prefix='/api/auth', tags=['auth'])
 users_router = APIRouter(prefix='/api/users', tags=['users'])
 
 
+def _guest_user() -> User:
+    return User(
+        id=0,
+        username='guest',
+        password_hash='',
+        role=ROLE_OWNER,
+        is_active=True,
+        created_at=datetime.utcnow(),
+        created_by=None,
+    )
+
+
 def resolve_session_secret() -> str:
     if SESSION_SECRET:
         return SESSION_SECRET
@@ -35,6 +48,8 @@ def resolve_session_secret() -> str:
 
 
 async def ensure_owner() -> None:
+    if not AUTH_ENABLED:
+        return
     async with SessionLocal() as session:
         q = select(User).where(User.role == ROLE_OWNER)
         exists = (await session.execute(q)).scalars().first()
@@ -63,6 +78,8 @@ async def require_user(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> User:
+    if not AUTH_ENABLED:
+        return _guest_user()
     user_id = request.session.get('user_id')
     if not user_id:
         raise HTTPException(status_code=401, detail='Нужна авторизация')
@@ -78,6 +95,8 @@ async def require_user(
 async def require_owner(
     user: User = Depends(require_user),
 ) -> User:
+    if not AUTH_ENABLED:
+        return user
     if user.role != ROLE_OWNER:
         raise HTTPException(
             status_code=403, detail='Доступно только владельцу',
@@ -124,6 +143,8 @@ async def login(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ):
+    if not AUTH_ENABLED:
+        return _to_out(_guest_user())
     q = select(User).where(User.username == req.username)
     user = (await session.execute(q)).scalars().first()
     if (

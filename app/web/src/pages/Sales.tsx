@@ -26,21 +26,24 @@ type SaleRow = {
   amount: number;
   date: string | null;
   type: string;
+  warehouse: string | null;
+  organization: string | null;
 };
+
+const dashOrValue = (v: unknown) =>
+  v ? String(v) : <span className="text-text-3">—</span>;
 
 const columns: Column<SaleRow>[] = [
   {
     key: 'date', header: 'Дата', date: true,
-    width: '160px',
+    width: '150px',
   },
   {
     key: 'article', header: 'Артикул',
     mono: true, width: '110px',
-    format: (v) => v ? String(v) : (
-      <span className="text-ink-3">—</span>
-    ),
+    format: dashOrValue,
   },
-  { key: 'size', header: 'Размер', width: '110px' },
+  { key: 'size', header: 'Размер', width: '100px' },
   {
     key: 'channel', header: 'Канал', width: '92px',
     format: (v) => (
@@ -54,19 +57,29 @@ const columns: Column<SaleRow>[] = [
     format: (v) => (
       <span
         className={
-          v === 'возврат' ? 'text-negative' : 'text-ink-2'
+          v === 'возврат' ? 'text-negative' : 'text-text-2'
         }
       >
         {String(v ?? '')}
       </span>
     ),
   },
-  { key: 'quantity', header: 'Кол-во', numeric: true },
+  {
+    key: 'warehouse', header: 'Склад',
+    format: dashOrValue,
+    className: 'max-w-[220px] truncate',
+  },
+  {
+    key: 'organization', header: 'Организация',
+    format: dashOrValue,
+    className: 'max-w-[220px] truncate',
+  },
+  { key: 'quantity', header: 'Кол-во', numeric: true, width: '90px' },
   {
     key: 'amount', header: 'Сумма ₽', numeric: true,
     format: (v) => {
       const n = Number(v ?? 0);
-      const cls = n < 0 ? 'text-negative' : 'text-ink';
+      const cls = n < 0 ? 'text-negative' : 'text-text';
       return <span className={cls}>{fmtMoney(n)}</span>;
     },
   },
