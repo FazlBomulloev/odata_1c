@@ -1,6 +1,6 @@
 import {
   ShoppingBag, TrendingUp, ArrowLeftRight,
-  Package, History as HistoryIcon, Users as UsersIcon,
+  Package, Users as UsersIcon,
   LogOut, ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/auth';
 
 export type PageKey =
   | 'sales' | 'gross_profit' | 'movements'
-  | 'stock' | 'history' | 'users';
+  | 'stock' | 'users';
 
 type Item = {
   key: PageKey;
@@ -22,7 +22,6 @@ const items: Item[] = [
   { key: 'gross_profit', label: 'Прибыль', icon: TrendingUp },
   { key: 'movements', label: 'Движения', icon: ArrowLeftRight },
   { key: 'stock', label: 'Остатки', icon: Package },
-  { key: 'history', label: 'История', icon: HistoryIcon },
   { key: 'users', label: 'Команда', icon: UsersIcon, ownerOnly: true },
 ];
 

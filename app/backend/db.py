@@ -350,7 +350,26 @@ class SalesTurnover(Base):
     )
 
 
-engine = create_async_engine(DB_URL, echo=False, future=True)
+engine = create_async_engine(
+    DB_URL, echo=False, future=True,
+    connect_args={'timeout': 30},
+)
+
+
+# SQLite: WAL — читатели не блокируются писателем.
+# Без этого /api/* падают в 500 «database is locked» во время
+# массовых INSERT в sync.
+if DB_URL.startswith('sqlite'):
+    from sqlalchemy import event
+
+    @event.listens_for(engine.sync_engine, 'connect')
+    def _sqlite_pragmas(dbapi_conn, _):
+        cur = dbapi_conn.cursor()
+        cur.execute('PRAGMA journal_mode=WAL')
+        cur.execute('PRAGMA synchronous=NORMAL')
+        cur.execute('PRAGMA busy_timeout=30000')
+        cur.close()
+
 SessionLocal = async_sessionmaker(
     engine, expire_on_commit=False, class_=AsyncSession,
 )
