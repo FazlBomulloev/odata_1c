@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X, Plus, Trash2, Sparkles, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input, Select, Label } from '@/components/ui/input';
+import { Input, Label } from '@/components/ui/input';
 import {
   api, ApiError,
   type ProductSizePayload,
