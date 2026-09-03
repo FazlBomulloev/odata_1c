@@ -198,35 +198,41 @@ def _size_from(
     return size or None
 
 
-SALES_REGISTER = 'AccumulationRegister_Продажи'
+SALES_RECORDS = 'AccumulationRegister_Продажи_RecordType'
 
 
 async def _fetch_recorder_dims(
     client: AsyncOData1C,
     date_from: datetime,
     date_to: datetime,
+    recorder_type: str,
 ) -> dict:
-    """{Recorder_Key: (Склад_Key, Организация_Key)} из регистра Продажи.
+    """{Recorder_Key: (Склад_Key, Организация_Key)} из проводок
+    регистра Продажи, отфильтрованных по типу документа.
 
-    Регистр AccumulationRegister_Продажи для каждой строки хранит
-    реальный Склад_Key и Организация_Key. Матчим по Recorder (это
-    Ref_Key документа-регистратора — ОтчетКомиссионера,
-    ОтчетОРозничныхПродажах, РасходнаяНакладная).
+    Turnovers группирует по Документ (это документ-инициатор
+    списания — обычно РасходнаяНакладная), поэтому Ref_Key
+    ОтчётаКомиссионера там не находится. Сырая таблица _RecordType
+    хранит Recorder = Ref_Key исходного документа проведения —
+    для комиссионера это как раз он.
     """
     if date_from < MIN_PERIOD:
         date_from = MIN_PERIOD
-    endpoint = (
-        f"{SALES_REGISTER}/Turnovers("
-        f"StartPeriod=datetime'{_iso(date_from)}',"
-        f"EndPeriod=datetime'{_iso(date_to)}')"
+    flt = (
+        f"Period ge datetime'{_iso(date_from)}' and "
+        f"Period le datetime'{_iso(date_to)}' and "
+        f"Recorder_Type eq 'StandardODATA.{recorder_type}'"
     )
     rows = await _paginate(
-        client, endpoint,
-        {'$select': 'Документ,Склад_Key,Организация_Key'},
+        client, SALES_RECORDS,
+        {
+            '$filter': flt,
+            '$select': 'Recorder,Склад_Key,Организация_Key',
+        },
     )
     result: dict = {}
     for r in rows:
-        rec = r.get('Документ') or ''
+        rec = r.get('Recorder') or ''
         wh = r.get('Склад_Key') or ''
         org = r.get('Организация_Key') or ''
         if not rec:
@@ -294,7 +300,10 @@ async def fetch_marketplace_sales(
     rows_sales, rows_returns, dims_by_ref = await asyncio.gather(
         _batch_by_keys(client, DOC_COMMISSION_SALES, refs),
         _batch_by_keys(client, DOC_COMMISSION_RETURNS, refs),
-        _fetch_recorder_dims(client, date_from, date_to),
+        _fetch_recorder_dims(
+            client, date_from, date_to,
+            recorder_type='Document_ОтчетКомиссионера',
+        ),
     )
 
     nom_keys: set = set()
