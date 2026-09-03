@@ -48,6 +48,56 @@ export type SyncStatusResponse = {
   runs: SyncRunStatus[];
 };
 
+export type ProductListItem = {
+  ref_key: string;
+  article: string;
+  name: string;
+  full_name: string;
+  group_key: string;
+  category_key: string;
+  photo_key: string;
+  price: number;
+  deletion_mark: boolean;
+};
+
+export type ProductSizePayload = {
+  global: string;
+  ru: string;
+  barcode: string;
+};
+
+export type ProductCreatePayload = {
+  article?: string | null;
+  article_prefix?: string | null;
+  name: string;
+  description?: string;
+  price: number;
+  category?: string;
+  color?: string;
+  group?: string;
+  sizes?: ProductSizePayload[];
+  photos?: string[];
+};
+
+export type ProductUpdatePayload = {
+  name?: string;
+  price?: number;
+  sizes?: ProductSizePayload[];
+};
+
+export type ProductDetail = {
+  nomenclature: Record<string, unknown>;
+  characteristics: Record<string, unknown>[];
+  barcodes: Record<string, unknown>[];
+  prices: Record<string, unknown>[];
+  photos: {
+    Ref_Key: string;
+    Description: string;
+    Расширение: string;
+    Размер: number;
+  }[];
+};
+
 export type Role = 'owner' | 'employee';
 
 export type CurrentUser = {
@@ -182,6 +232,55 @@ export const api = {
     post<CurrentUser>('/api/auth/login', { username, password }),
   authLogout: () => post<{ ok: boolean }>('/api/auth/logout', {}),
   authMe: () => get<CurrentUser>('/api/auth/me'),
+
+  productsList: (params: {
+    prefix?: string;
+    limit?: number;
+    offset?: number;
+    only_active?: boolean;
+  } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.prefix) qs.set('prefix', params.prefix);
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    if (params.offset != null) qs.set('offset', String(params.offset));
+    if (params.only_active != null) {
+      qs.set('only_active', String(params.only_active));
+    }
+    const q = qs.toString();
+    return get<ProductListItem[]>(
+      `/api/products${q ? `?${q}` : ''}`,
+    );
+  },
+  productNextArticle: (prefix: string) =>
+    get<{ article: string }>(
+      `/api/products/next-article?prefix=${encodeURIComponent(prefix)}`,
+    ),
+  productExists: (article: string) =>
+    get<{ article: string; exists: boolean }>(
+      `/api/products/exists?article=${encodeURIComponent(article)}`,
+    ),
+  productSearch: (prefix: string) =>
+    get<{ prefix: string; articles: string[] }>(
+      `/api/products/search?prefix=${encodeURIComponent(prefix)}`,
+    ),
+  productGet: (article: string) =>
+    get<ProductDetail>(
+      `/api/products/${encodeURIComponent(article)}`,
+    ),
+  productCreate: (data: ProductCreatePayload) =>
+    post<{ article: string; result: unknown }>(
+      '/api/products', data,
+    ),
+  productUpdate: (article: string, data: ProductUpdatePayload) =>
+    req<unknown>(
+      'PATCH', `/api/products/${encodeURIComponent(article)}`, data,
+    ),
+  productDelete: (article: string) =>
+    req<{ ok: boolean }>(
+      'DELETE', `/api/products/${encodeURIComponent(article)}`,
+    ),
+  productPhotoUrl: (fileKey: string) =>
+    `${BASE}/api/products/photo/${encodeURIComponent(fileKey)}`,
 
   listUsers: () => get<CurrentUser[]>('/api/users'),
   createUser: (

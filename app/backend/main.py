@@ -7,6 +7,14 @@ from typing import Any, Awaitable, Callable
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
+
+from odata_1c.exceptions import (
+    ArticleNotFoundError,
+    ODataNotFoundError,
+    ODataValidationError,
+    ProductExistsError,
+)
 from sqlalchemy import desc, func, select
 from sqlalchemy.sql import ColumnElement
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,11 +59,25 @@ from .db import (
     serialize_payload,
 )
 from .odata_async import AsyncOData1C
+from .products_service import (
+    article_exists_async,
+    create_product_async,
+    delete_product_async,
+    get_product_async,
+    list_products_async,
+    next_article_async,
+    photo_bytes_async,
+    search_articles_async,
+    update_product_async,
+)
 from .schemas import (
     AllSalesRequest,
     GrossProfitRequest,
     MarketplaceSalesRequest,
     MovementsRequest,
+    ProductCreate,
+    ProductListItem,
+    ProductUpdate,
     RetailSalesRequest,
     RunDetail,
     RunSummary,
@@ -714,6 +736,184 @@ async def api_run_delete(
     await session.delete(r)
     await session.commit()
     return {'ok': True}
+
+
+_EXT_MIME = {
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'webp': 'image/webp',
+    'gif': 'image/gif',
+}
+
+
+@data_router.get(
+    '/api/products',
+    response_model=list[ProductListItem],
+)
+async def api_products_list(
+    prefix: str = Query(''),
+    limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    only_active: bool = Query(True),
+):
+    try:
+        rows = await list_products_async(
+            prefix=prefix,
+            limit=limit,
+            offset=offset,
+            only_active=only_active,
+        )
+    except Exception as exc:
+        logger.exception('Ошибка получения товаров')
+        raise HTTPException(status_code=502, detail=str(exc))
+    return rows
+
+
+@data_router.get('/api/products/next-article')
+async def api_products_next_article(
+    prefix: str = Query(..., min_length=1),
+):
+    try:
+        article = await next_article_async(prefix)
+    except Exception as exc:
+        logger.exception('Ошибка подбора артикула')
+        raise HTTPException(status_code=502, detail=str(exc))
+    return {'article': article}
+
+
+@data_router.get('/api/products/exists')
+async def api_products_exists(
+    article: str = Query(..., min_length=1),
+):
+    try:
+        exists = await article_exists_async(article)
+    except Exception as exc:
+        logger.exception('Ошибка проверки артикула')
+        raise HTTPException(status_code=502, detail=str(exc))
+    return {'article': article, 'exists': exists}
+
+
+@data_router.get('/api/products/search')
+async def api_products_search(
+    prefix: str = Query(..., min_length=1),
+):
+    try:
+        articles = await search_articles_async(prefix)
+    except Exception as exc:
+        logger.exception('Ошибка поиска артикулов')
+        raise HTTPException(status_code=502, detail=str(exc))
+    return {'prefix': prefix, 'articles': articles}
+
+
+@data_router.get('/api/products/photo/{file_key}')
+async def api_products_photo(file_key: str):
+    try:
+        content, ext = await photo_bytes_async(file_key)
+    except ODataNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        logger.exception('Ошибка получения фото')
+        raise HTTPException(status_code=502, detail=str(exc))
+    mime = _EXT_MIME.get(ext.lower(), 'application/octet-stream')
+    return Response(
+        content=content,
+        media_type=mime,
+        headers={'Cache-Control': 'public, max-age=86400'},
+    )
+
+
+@data_router.get('/api/products/{article}')
+async def api_products_get(article: str):
+    try:
+        data = await get_product_async(article)
+    except ArticleNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        logger.exception('Ошибка получения товара')
+        raise HTTPException(status_code=502, detail=str(exc))
+    return data
+
+
+@data_router.post('/api/products')
+async def api_products_create(req: ProductCreate):
+    payload = req.model_dump(by_alias=False)
+    article = (payload.get('article') or '').strip()
+    prefix = (payload.pop('article_prefix', None) or '').strip()
+    if not article:
+        if not prefix:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    'Нужен либо article, либо article_prefix'
+                ),
+            )
+        try:
+            article = await next_article_async(prefix)
+        except Exception as exc:
+            logger.exception('Ошибка подбора артикула')
+            raise HTTPException(
+                status_code=502, detail=str(exc),
+            )
+    payload['article'] = article
+
+    try:
+        result = await create_product_async(payload)
+    except ProductExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ODataValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception('Ошибка создания товара')
+        raise HTTPException(status_code=502, detail=str(exc))
+    return {'article': article, 'result': result}
+
+
+@data_router.patch('/api/products/{article}')
+async def api_products_update(
+    article: str, req: ProductUpdate,
+):
+    payload: dict = {}
+    if req.name is not None:
+        payload['name'] = req.name
+    if req.price is not None:
+        payload['price'] = req.price
+    if req.sizes:
+        payload['sizes'] = [
+            {
+                'global': s.global_size,
+                'ru': s.ru_size,
+                'barcode': s.barcode,
+            }
+            for s in req.sizes
+        ]
+    if not payload:
+        raise HTTPException(
+            status_code=400,
+            detail='Нечего обновлять',
+        )
+    try:
+        result = await update_product_async(article, payload)
+    except ArticleNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ODataValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception('Ошибка обновления товара')
+        raise HTTPException(status_code=502, detail=str(exc))
+    return result
+
+
+@data_router.delete('/api/products/{article}')
+async def api_products_delete(article: str):
+    try:
+        await delete_product_async(article)
+    except ArticleNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        logger.exception('Ошибка удаления товара')
+        raise HTTPException(status_code=502, detail=str(exc))
+    return {'ok': True, 'article': article}
 
 
 app.include_router(data_router)

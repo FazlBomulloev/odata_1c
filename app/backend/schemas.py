@@ -63,3 +63,43 @@ class RunSummary(BaseModel):
 
 class RunDetail(RunSummary):
     payload: list | None
+
+
+class SizeIn(BaseModel):
+    global_size: str = Field(alias='global')
+    ru_size: str = Field(alias='ru')
+    barcode: str
+
+    class Config:
+        populate_by_name = True
+
+
+class ProductCreate(BaseModel):
+    article: str | None = None
+    article_prefix: str | None = None
+    name: str
+    description: str = ''
+    price: float
+    category: str = ''
+    color: str = ''
+    group: str = ''
+    sizes: list[SizeIn] = Field(default_factory=list)
+    photos: list[str] = Field(default_factory=list)
+
+
+class ProductUpdate(BaseModel):
+    name: str | None = None
+    price: float | None = None
+    sizes: list[SizeIn] = Field(default_factory=list)
+
+
+class ProductListItem(BaseModel):
+    ref_key: str
+    article: str
+    name: str
+    full_name: str
+    group_key: str
+    category_key: str
+    photo_key: str
+    price: float
+    deletion_mark: bool

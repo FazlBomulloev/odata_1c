@@ -5,6 +5,7 @@ const PAGE_TITLES: Record<string, string> = {
   gross_profit: 'Валовая прибыль',
   movements: 'Движения',
   stock: 'Остатки',
+  products: 'Товары',
   history: 'История запросов',
   users: 'Команда',
 };

@@ -16,3 +16,11 @@ class ODataNotFoundError(ODataError):
 
 class ODataValidationError(ODataError):
     """Ошибка валидации данных."""
+
+
+class ArticleNotFoundError(ODataError):
+    """Артикул не найден."""
+
+
+class ProductExistsError(ODataError):
+    """Товар с таким артикулом уже есть."""

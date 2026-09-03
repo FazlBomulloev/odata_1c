@@ -4,6 +4,7 @@ import { Topbar } from '@/components/Topbar';
 import { SalesPage } from '@/pages/Sales';
 import { MovementsPage } from '@/pages/Movements';
 import { StockPage } from '@/pages/Stock';
+import { ProductsPage } from '@/pages/Products';
 import { UsersPage } from '@/pages/Users';
 import { LoginPage } from '@/pages/Login';
 import { GrossProfitPage } from '@/pages/GrossProfit';
@@ -58,6 +59,7 @@ function AppInner() {
           {current === 'gross_profit' && <GrossProfitPage />}
           {current === 'movements' && <MovementsPage />}
           {current === 'stock' && <StockPage />}
+          {current === 'products' && <ProductsPage />}
           {current === 'users' && isOwner && <UsersPage />}
         </main>
       </div>

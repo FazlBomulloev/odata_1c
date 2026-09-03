@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 
@@ -79,3 +79,48 @@ class SaleRecord:
     type: str
     warehouse: str | None = None
     organization: str | None = None
+
+
+@dataclass
+class SizeData:
+    """Один размер: глобальный, российский, штрихкод."""
+    global_size: str
+    ru_size: str
+    barcode: str
+
+
+@dataclass
+class ProductData:
+    """Товар для создания/обновления в 1С."""
+    article: str
+    name: str
+    description: str
+    price: float
+    category: str
+    color: str
+    group: str = ''
+    sizes: list[SizeData] = field(default_factory=list)
+    photos: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_json(cls, data: dict) -> 'ProductData':
+        """Создаёт ProductData из dict сервиса."""
+        sizes = [
+            SizeData(
+                global_size=s['global'],
+                ru_size=s['ru'],
+                barcode=s['barcode'],
+            )
+            for s in data.get('sizes', [])
+        ]
+        return cls(
+            article=data['article'],
+            name=data['name'],
+            description=data.get('description', ''),
+            price=float(data['price']),
+            category=data.get('category', ''),
+            color=data.get('color', ''),
+            group=data.get('group', ''),
+            sizes=sizes,
+            photos=data.get('photos', []),
+        )
