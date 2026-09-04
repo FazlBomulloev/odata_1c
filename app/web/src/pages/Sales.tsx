@@ -8,7 +8,7 @@ import { TableSkeleton } from '@/components/ui/skeleton';
 import { RunStatus } from '@/components/RunBadges';
 import { KpiStrip, ChannelSplit } from '@/components/KpiStrip';
 import { Badge, channelTone } from '@/components/ui/badge';
-import { api, type RunResult } from '@/lib/api';
+import { api, PAGE_SIZE, type PagedResponse } from '@/lib/api';
 import {
   defaultRange, fromDateInput, toDateInput,
 } from '@/lib/dates';
@@ -91,11 +91,14 @@ export function SalesPage() {
   const [from, setFrom] = useState(toDateInput(range.from));
   const [to, setTo] = useState(toDateInput(range.to));
   const [channel, setChannel] = useState('');
-  const [result, setResult] = useState<RunResult | null>(null);
+  const [result, setResult] =
+    useState<PagedResponse<SaleRow> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   const rows = (result?.records as SaleRow[]) || [];
+  const total = result?.total ?? 0;
 
   const kpis = useMemo(() => {
     if (!rows.length) return null;
@@ -123,17 +126,24 @@ export function SalesPage() {
     return { amount, qty, skus: skus.size, returns, chs };
   }, [rows]);
 
-  const run = async () => {
+  const run = async (p = 1) => {
     setLoading(true);
     setError(null);
     try {
       const df = fromDateInput(from);
       const dt = fromDateInput(to, true);
-      let r: RunResult;
-      if (mode === 'all') r = await api.allSales(df, dt);
-      else if (mode === 'retail') r = await api.retailSales(df, dt);
-      else r = await api.marketplaceSales(df, dt, channel || null);
-      setResult(r);
+      let r: PagedResponse;
+      if (mode === 'all') {
+        r = await api.allSales(df, dt, p, PAGE_SIZE);
+      } else if (mode === 'retail') {
+        r = await api.retailSales(df, dt, p, PAGE_SIZE);
+      } else {
+        r = await api.marketplaceSales(
+          df, dt, channel || null, p, PAGE_SIZE,
+        );
+      }
+      setResult(r as PagedResponse<SaleRow>);
+      setPage(p);
     } catch (e) {
       setError((e as Error).message);
       setResult(null);
@@ -143,7 +153,7 @@ export function SalesPage() {
   };
 
   useEffect(() => {
-    void run();
+    void run(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -194,7 +204,7 @@ export function SalesPage() {
           </Select>
         </Field>
         <div className="ml-auto flex items-end gap-2">
-          <Button onClick={run} disabled={loading}>
+          <Button onClick={() => run(1)} disabled={loading}>
             {loading ? 'Загрузка…' : 'Загрузить'}
           </Button>
         </div>
@@ -202,14 +212,13 @@ export function SalesPage() {
 
       <div className="mb-4">
         <RunStatus
-          count={result?.record_count}
-          ms={result?.duration_ms}
+          count={total}
           error={error}
           loading={loading}
         />
       </div>
 
-      {kpis && !loading && (
+      {kpis && !loading && total <= rows.length && (
         <>
           <KpiStrip
             items={[
@@ -252,6 +261,13 @@ export function SalesPage() {
           data={rows}
           columns={columns}
           filename={`sales_${mode}_${from}_${to}.csv`}
+          serverPagination={{
+            page,
+            size: PAGE_SIZE,
+            total,
+            loading,
+            onPageChange: (p) => void run(p),
+          }}
         />
       )}
     </div>

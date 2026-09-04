@@ -17,6 +17,14 @@ export type Column<T> = {
   width?: string;
 };
 
+export type ServerPagination = {
+  page: number;
+  size: number;
+  total: number;
+  loading?: boolean;
+  onPageChange: (page: number) => void;
+};
+
 type Props<T extends Record<string, unknown>> = {
   data: T[];
   columns: Column<T>[];
@@ -24,6 +32,7 @@ type Props<T extends Record<string, unknown>> = {
   searchable?: boolean;
   pageSize?: number;
   emptyMessage?: string;
+  serverPagination?: ServerPagination;
 };
 
 export function DataTable<T extends Record<string, unknown>>({
@@ -33,12 +42,14 @@ export function DataTable<T extends Record<string, unknown>>({
   searchable = true,
   pageSize = 50,
   emptyMessage = 'Ничего не нашлось за выбранный период',
+  serverPagination,
 }: Props<T>) {
   const [sort, setSort] = useState<{
     key: string; dir: 'asc' | 'desc';
   } | null>(null);
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
+  const isServer = !!serverPagination;
 
   const filtered = useMemo(() => {
     if (!query.trim()) return data;
@@ -70,13 +81,29 @@ export function DataTable<T extends Record<string, unknown>>({
     return s;
   }, [filtered, sort]);
 
-  const totalPages = Math.max(
-    1, Math.ceil(sorted.length / pageSize),
-  );
-  const pageSafe = Math.min(page, totalPages);
-  const rows = sorted.slice(
-    (pageSafe - 1) * pageSize, pageSafe * pageSize,
-  );
+  const totalPages = isServer
+    ? Math.max(
+        1,
+        Math.ceil(
+          serverPagination!.total / serverPagination!.size,
+        ),
+      )
+    : Math.max(1, Math.ceil(sorted.length / pageSize));
+  const pageSafe = isServer
+    ? Math.min(serverPagination!.page, totalPages)
+    : Math.min(page, totalPages);
+  const rows = isServer
+    ? sorted
+    : sorted.slice(
+        (pageSafe - 1) * pageSize, pageSafe * pageSize,
+      );
+  const goPage = (p: number) => {
+    if (isServer) {
+      serverPagination!.onPageChange(p);
+    } else {
+      setPage(p);
+    }
+  };
 
   const toggleSort = (key: string) => {
     setSort((s) => {
@@ -108,8 +135,10 @@ export function DataTable<T extends Record<string, unknown>>({
           </div>
         )}
         <span className="text-11 text-text-3 font-mono tabular">
-          {sorted.length.toLocaleString('ru-RU')}
-          {query && data.length !== sorted.length &&
+          {isServer
+            ? serverPagination!.total.toLocaleString('ru-RU')
+            : sorted.length.toLocaleString('ru-RU')}
+          {!isServer && query && data.length !== sorted.length &&
             ` / ${data.length.toLocaleString('ru-RU')}`}
           {' записей'}
         </span>
@@ -245,25 +274,29 @@ export function DataTable<T extends Record<string, unknown>>({
           <div className="flex gap-1">
             <Button
               variant="ghost" size="sm"
-              onClick={() => setPage(1)}
-              disabled={pageSafe <= 1}
+              onClick={() => goPage(1)}
+              disabled={pageSafe <= 1 || serverPagination?.loading}
             >«</Button>
             <Button
               variant="ghost" size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={pageSafe <= 1}
+              onClick={() => goPage(Math.max(1, pageSafe - 1))}
+              disabled={pageSafe <= 1 || serverPagination?.loading}
             >‹</Button>
             <Button
               variant="ghost" size="sm"
               onClick={() =>
-                setPage((p) => Math.min(totalPages, p + 1))
+                goPage(Math.min(totalPages, pageSafe + 1))
               }
-              disabled={pageSafe >= totalPages}
+              disabled={
+                pageSafe >= totalPages || serverPagination?.loading
+              }
             >›</Button>
             <Button
               variant="ghost" size="sm"
-              onClick={() => setPage(totalPages)}
-              disabled={pageSafe >= totalPages}
+              onClick={() => goPage(totalPages)}
+              disabled={
+                pageSafe >= totalPages || serverPagination?.loading
+              }
             >»</Button>
           </div>
         </div>

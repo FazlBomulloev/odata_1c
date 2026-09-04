@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { KpiStrip } from '@/components/KpiStrip';
 import { TableSkeleton } from '@/components/ui/skeleton';
 import { ProductForm } from '@/components/ProductForm';
-import { api, type ProductListItem } from '@/lib/api';
+import { api, PAGE_SIZE, type ProductListItem } from '@/lib/api';
 import { fmtCompact } from '@/lib/utils';
 
 type FormState =
@@ -18,6 +18,8 @@ type FormState =
 
 export function ProductsPage() {
   const [rows, setRows] = useState<ProductListItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [prefix, setPrefix] = useState('');
@@ -26,26 +28,30 @@ export function ProductsPage() {
   const [form, setForm] = useState<FormState>({ open: false });
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = async (p = 1) => {
     setLoading(true);
     setError(null);
     try {
       const r = await api.productsList({
         prefix,
-        limit: 100,
+        page: p,
+        size: PAGE_SIZE,
         only_active: onlyActive,
       });
-      setRows(r);
+      setRows(r.records);
+      setTotal(r.total ?? 0);
+      setPage(p);
     } catch (e) {
       setError((e as Error).message);
       setRows([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    void load();
+    void load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -60,10 +66,9 @@ export function ProductsPage() {
   }, [rows, articleSearch]);
 
   const kpis = useMemo(() => {
-    const total = rows.length;
     const withPhoto = rows.filter((r) => r.photo_key).length;
     const active = rows.filter((r) => !r.deletion_mark).length;
-    return { total, withPhoto, active };
+    return { withPhoto, active };
   }, [rows]);
 
   const onDelete = async (article: string) => {
@@ -71,13 +76,15 @@ export function ProductsPage() {
     setDeleting(article);
     try {
       await api.productDelete(article);
-      await load();
+      await load(page);
     } catch (e) {
       alert((e as Error).message);
     } finally {
       setDeleting(null);
     }
   };
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div>
@@ -89,7 +96,7 @@ export function ProductsPage() {
         по префиксу."
         actions={
           <>
-            <Button variant="ghost" onClick={() => void load()}>
+            <Button variant="ghost" onClick={() => void load(1)}>
               <RefreshCw className="h-3.5 w-3.5" />
               Обновить
             </Button>
@@ -116,10 +123,10 @@ export function ProductsPage() {
               placeholder="например 180"
               className="font-mono w-[180px]"
               onKeyDown={(e) => {
-                if (e.key === 'Enter') void load();
+                if (e.key === 'Enter') void load(1);
               }}
             />
-            <Button variant="ghost" onClick={() => void load()}>
+            <Button variant="ghost" onClick={() => void load(1)}>
               загрузить
             </Button>
           </div>
@@ -170,16 +177,20 @@ export function ProductsPage() {
       {!loading && rows.length > 0 && (
         <KpiStrip
           items={[
-            { label: 'Всего', value: fmtCompact(kpis.total) },
+            {
+              label: 'Всего',
+              value: fmtCompact(total),
+              hint: `страница ${page} из ${totalPages}`,
+            },
             {
               label: 'Активных',
               value: fmtCompact(kpis.active),
-              hint: 'без пометки на удаление',
+              hint: 'на текущей странице',
             },
             {
               label: 'С фото',
               value: fmtCompact(kpis.withPhoto),
-              hint: 'основная картинка задана',
+              hint: 'на текущей странице',
             },
           ]}
         />
@@ -214,6 +225,48 @@ export function ProductsPage() {
               Ничего не найдено
             </div>
           )}
+        </div>
+      )}
+
+      {!loading && totalPages > 1 && (
+        <div
+          className="flex items-center justify-between mt-6
+          text-11 text-text-3"
+        >
+          <span>
+            Страница{' '}
+            <span className="font-mono tabular text-text-2">
+              {page}
+            </span>{' '}
+            из{' '}
+            <span className="font-mono tabular text-text-2">
+              {totalPages}
+            </span>
+          </span>
+          <div className="flex gap-1">
+            <Button
+              variant="ghost" size="sm"
+              onClick={() => void load(1)}
+              disabled={page <= 1 || loading}
+            >«</Button>
+            <Button
+              variant="ghost" size="sm"
+              onClick={() => void load(Math.max(1, page - 1))}
+              disabled={page <= 1 || loading}
+            >‹</Button>
+            <Button
+              variant="ghost" size="sm"
+              onClick={() =>
+                void load(Math.min(totalPages, page + 1))
+              }
+              disabled={page >= totalPages || loading}
+            >›</Button>
+            <Button
+              variant="ghost" size="sm"
+              onClick={() => void load(totalPages)}
+              disabled={page >= totalPages || loading}
+            >»</Button>
+          </div>
         </div>
       )}
 

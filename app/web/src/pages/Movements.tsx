@@ -8,7 +8,10 @@ import { TableSkeleton } from '@/components/ui/skeleton';
 import { RunStatus } from '@/components/RunBadges';
 import { KpiStrip } from '@/components/KpiStrip';
 import { Badge } from '@/components/ui/badge';
-import { api, type CatalogItem, type RunResult } from '@/lib/api';
+import {
+  api, PAGE_SIZE,
+  type CatalogItem, type PagedResponse,
+} from '@/lib/api';
 import {
   defaultRange, fromDateInput, toDateInput,
 } from '@/lib/dates';
@@ -85,14 +88,16 @@ export function MovementsPage() {
   const [warehouse, setWarehouse] = useState('');
   const [warehouses, setWarehouses] = useState<CatalogItem[]>([]);
   const [orgs, setOrgs] = useState<CatalogItem[]>([]);
-  const [result, setResult] = useState<RunResult | null>(null);
+  const [result, setResult] =
+    useState<PagedResponse<MoveRow> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     api.warehouses().then(setWarehouses).catch(() => {});
     api.organizations().then(setOrgs).catch(() => {});
-    void run();
+    void run(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -120,7 +125,7 @@ export function MovementsPage() {
     };
   }, [rows]);
 
-  const run = async () => {
+  const run = async (p = 1) => {
     setLoading(true);
     setError(null);
     try {
@@ -130,8 +135,9 @@ export function MovementsPage() {
         kind,
         organization,
         warehouse,
-      });
-      setResult(r);
+      }, p, PAGE_SIZE);
+      setResult(r as PagedResponse<MoveRow>);
+      setPage(p);
     } catch (e) {
       setError((e as Error).message);
       setResult(null);
@@ -201,7 +207,7 @@ export function MovementsPage() {
           </Select>
         </Field>
         <div className="ml-auto flex items-end">
-          <Button onClick={run} disabled={loading}>
+          <Button onClick={() => run(1)} disabled={loading}>
             {loading ? 'Загрузка…' : 'Загрузить'}
           </Button>
         </div>
@@ -209,14 +215,14 @@ export function MovementsPage() {
 
       <div className="mb-4">
         <RunStatus
-          count={result?.record_count}
-          ms={result?.duration_ms}
+          count={result?.total ?? 0}
           error={error}
           loading={loading}
         />
       </div>
 
-      {kpis && !loading && (
+      {kpis && !loading &&
+       (result?.total ?? 0) <= rows.length && (
         <KpiStrip
           items={[
             {
@@ -249,6 +255,13 @@ export function MovementsPage() {
           data={rows}
           columns={columns}
           filename={`movements_${kind}_${from}_${to}.csv`}
+          serverPagination={{
+            page,
+            size: PAGE_SIZE,
+            total: result?.total ?? 0,
+            loading,
+            onPageChange: (p) => void run(p),
+          }}
         />
       )}
     </div>

@@ -5,7 +5,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { FilterBar, Field } from '@/components/FilterBar';
 import { DataTable, type Column } from '@/components/DataTable';
 import { TableSkeleton } from '@/components/ui/skeleton';
-import { api, type CatalogItem } from '@/lib/api';
+import { api, PAGE_SIZE, type CatalogItem } from '@/lib/api';
 import {
   defaultRange, fromDateInput, toDateInput,
 } from '@/lib/dates';
@@ -58,13 +58,15 @@ export function GrossProfitPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snapshotAt, setSnapshotAt] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     api.warehouses().then(setWarehouses).catch(() => setWarehouses([]));
     api.organizations().then(setOrgs).catch(() => setOrgs([]));
   }, []);
 
-  async function load() {
+  async function load(p = 1) {
     setLoading(true);
     setError(null);
     try {
@@ -75,25 +77,22 @@ export function GrossProfitPage() {
         warehouse,
         organization,
         group_by: groupBy,
-      });
-      // /api/gross-profit возвращает cached-формат:
-      // { records, snapshot_at, ... }
-      const raw = r as unknown as {
-        records: Row[];
-        snapshot_at: string | null;
-      };
-      setData(raw.records || []);
-      setSnapshotAt(raw.snapshot_at ?? null);
+      }, p, PAGE_SIZE);
+      setData((r.records as unknown as Row[]) || []);
+      setSnapshotAt(r.snapshot_at ?? null);
+      setTotal(r.total ?? 0);
+      setPage(p);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setData([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    void load();
+    void load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -271,7 +270,7 @@ export function GrossProfitPage() {
           </Select>
         </Field>
         <div className="ml-auto flex items-end">
-          <Button onClick={() => void load()} disabled={loading}>
+          <Button onClick={() => void load(1)} disabled={loading}>
             {loading ? 'Загрузка…' : 'Сформировать'}
           </Button>
         </div>
@@ -330,6 +329,13 @@ export function GrossProfitPage() {
           >[]}
           filename="gross-profit.csv"
           emptyMessage="Нет данных за выбранный период"
+          serverPagination={{
+            page,
+            size: PAGE_SIZE,
+            total,
+            loading,
+            onPageChange: (p) => void load(p),
+          }}
         />
       )}
     </div>

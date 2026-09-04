@@ -15,6 +15,23 @@ export type RunResult<T = Record<string, unknown>> = {
   records: T[];
 };
 
+export type PagedResponse<T = Record<string, unknown>> = {
+  source?: string;
+  method?: string;
+  snapshot_at?: string | null;
+  page: number;
+  size: number;
+  total: number;
+  record_count: number;
+  records: T[];
+};
+
+export const PAGE_SIZE = 50;
+
+function pageQs(page: number, size: number): string {
+  return `?page=${page}&size=${size}`;
+}
+
 export type RunSummary = {
   id: number;
   method: string;
@@ -164,43 +181,68 @@ export const api = {
     date_from: string,
     date_to: string,
     channel?: string | null,
+    page = 1,
+    size = PAGE_SIZE,
   ) =>
-    post<RunResult>('/api/sales/marketplace', {
-      date_from,
-      date_to,
-      channel: channel || null,
-    }),
-  retailSales: (date_from: string, date_to: string) =>
-    post<RunResult>('/api/sales/retail', { date_from, date_to }),
-  allSales: (date_from: string, date_to: string) =>
-    post<RunResult>('/api/sales/all', { date_from, date_to }),
-  movements: (params: {
-    date_from: string;
-    date_to: string;
-    kind: string;
-    organization?: string;
-    warehouse?: string;
-  }) =>
-    post<RunResult>('/api/movements', {
-      organization: '',
-      warehouse: '',
-      ...params,
-    }),
-  stock: (params: {
-    warehouse?: string;
-    organization?: string;
-    nomenclature?: string;
-    only_positive?: boolean;
-  }) =>
-    post<RunResult>('/api/stock', {
-      warehouse: '',
-      organization: '',
-      nomenclature: '',
-      only_positive: true,
-      ...params,
-    }),
-  stockByArticle: (article: string) =>
-    post<RunResult>('/api/stock/by-article', { article }),
+    post<PagedResponse>(
+      `/api/sales/marketplace${pageQs(page, size)}`,
+      { date_from, date_to, channel: channel || null },
+    ),
+  retailSales: (
+    date_from: string, date_to: string,
+    page = 1, size = PAGE_SIZE,
+  ) =>
+    post<PagedResponse>(
+      `/api/sales/retail${pageQs(page, size)}`,
+      { date_from, date_to },
+    ),
+  allSales: (
+    date_from: string, date_to: string,
+    page = 1, size = PAGE_SIZE,
+  ) =>
+    post<PagedResponse>(
+      `/api/sales/all${pageQs(page, size)}`,
+      { date_from, date_to },
+    ),
+  movements: (
+    params: {
+      date_from: string;
+      date_to: string;
+      kind: string;
+      organization?: string;
+      warehouse?: string;
+    },
+    page = 1,
+    size = PAGE_SIZE,
+  ) =>
+    post<PagedResponse>(
+      `/api/movements${pageQs(page, size)}`,
+      { organization: '', warehouse: '', ...params },
+    ),
+  stock: (
+    params: {
+      warehouse?: string;
+      organization?: string;
+      nomenclature?: string;
+      only_positive?: boolean;
+    },
+    page = 1,
+    size = PAGE_SIZE,
+  ) =>
+    post<PagedResponse>(
+      `/api/stock${pageQs(page, size)}`,
+      {
+        warehouse: '', organization: '', nomenclature: '',
+        only_positive: true, ...params,
+      },
+    ),
+  stockByArticle: (
+    article: string, page = 1, size = PAGE_SIZE,
+  ) =>
+    post<PagedResponse>(
+      `/api/stock/by-article${pageQs(page, size)}`,
+      { article },
+    ),
   warehouses: () => get<CatalogItem[]>('/api/catalog/warehouses'),
   organizations: () =>
     get<CatalogItem[]>('/api/catalog/organizations'),
@@ -220,22 +262,26 @@ export const api = {
       {},
     ),
 
-  grossProfit: (params: {
-    date_from: string;
-    date_to: string;
-    article?: string | null;
-    warehouse?: string;
-    organization?: string;
-    contractor?: string;
-    group_by?: string[];
-  }) =>
-    post<RunResult>('/api/gross-profit', {
-      warehouse: '',
-      organization: '',
-      contractor: '',
-      group_by: ['article', 'size'],
-      ...params,
-    }),
+  grossProfit: (
+    params: {
+      date_from: string;
+      date_to: string;
+      article?: string | null;
+      warehouse?: string;
+      organization?: string;
+      contractor?: string;
+      group_by?: string[];
+    },
+    page = 1,
+    size = PAGE_SIZE,
+  ) =>
+    post<PagedResponse>(
+      `/api/gross-profit${pageQs(page, size)}`,
+      {
+        warehouse: '', organization: '', contractor: '',
+        group_by: ['article', 'size'], ...params,
+      },
+    ),
 
   authLogin: (username: string, password: string) =>
     post<CurrentUser>('/api/auth/login', { username, password }),
@@ -244,20 +290,23 @@ export const api = {
 
   productsList: (params: {
     prefix?: string;
-    limit?: number;
-    offset?: number;
+    page?: number;
+    size?: number;
     only_active?: boolean;
+    include_service?: boolean;
   } = {}) => {
     const qs = new URLSearchParams();
     if (params.prefix) qs.set('prefix', params.prefix);
-    if (params.limit != null) qs.set('limit', String(params.limit));
-    if (params.offset != null) qs.set('offset', String(params.offset));
+    qs.set('page', String(params.page ?? 1));
+    qs.set('size', String(params.size ?? PAGE_SIZE));
     if (params.only_active != null) {
       qs.set('only_active', String(params.only_active));
     }
-    const q = qs.toString();
-    return get<ProductListItem[]>(
-      `/api/products${q ? `?${q}` : ''}`,
+    if (params.include_service) {
+      qs.set('include_service', 'true');
+    }
+    return get<PagedResponse<ProductListItem>>(
+      `/api/products?${qs.toString()}`,
     );
   },
   productNextArticle: (prefix: string) =>

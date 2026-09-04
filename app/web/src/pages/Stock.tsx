@@ -7,7 +7,10 @@ import { DataTable, type Column } from '@/components/DataTable';
 import { TableSkeleton } from '@/components/ui/skeleton';
 import { RunStatus } from '@/components/RunBadges';
 import { KpiStrip } from '@/components/KpiStrip';
-import { api, type CatalogItem, type RunResult } from '@/lib/api';
+import {
+  api, PAGE_SIZE,
+  type CatalogItem, type PagedResponse,
+} from '@/lib/api';
 import { fmtCompact } from '@/lib/utils';
 
 type StockRow = {
@@ -46,14 +49,16 @@ export function StockPage() {
   const [article, setArticle] = useState('');
   const [warehouses, setWarehouses] = useState<CatalogItem[]>([]);
   const [orgs, setOrgs] = useState<CatalogItem[]>([]);
-  const [result, setResult] = useState<RunResult | null>(null);
+  const [result, setResult] =
+    useState<PagedResponse<StockRow> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     api.warehouses().then(setWarehouses).catch(() => {});
     api.organizations().then(setOrgs).catch(() => {});
-    void run();
+    void run(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -72,20 +77,21 @@ export function StockPage() {
     return { total, whs: whs.size, skus: skus.size };
   }, [rows]);
 
-  const run = async () => {
+  const run = async (p = 1) => {
     setLoading(true);
     setError(null);
     try {
-      let r: RunResult;
+      let r: PagedResponse;
       if (mode === 'article') {
-        r = await api.stockByArticle(article);
+        r = await api.stockByArticle(article, p, PAGE_SIZE);
       } else {
         r = await api.stock({
           warehouse, organization,
           only_positive: onlyPositive,
-        });
+        }, p, PAGE_SIZE);
       }
-      setResult(r);
+      setResult(r as PagedResponse<StockRow>);
+      setPage(p);
     } catch (e) {
       setError((e as Error).message);
       setResult(null);
@@ -168,7 +174,7 @@ export function StockPage() {
         )}
         <div className="ml-auto flex items-end">
           <Button
-            onClick={run}
+            onClick={() => run(1)}
             disabled={
               loading || (mode === 'article' && !article.trim())
             }
@@ -180,14 +186,14 @@ export function StockPage() {
 
       <div className="mb-4">
         <RunStatus
-          count={result?.record_count}
-          ms={result?.duration_ms}
+          count={result?.total ?? 0}
           error={error}
           loading={loading}
         />
       </div>
 
-      {kpis && !loading && (
+      {kpis && !loading &&
+       (result?.total ?? 0) <= rows.length && (
         <KpiStrip
           items={[
             { label: 'Позиций', value: fmtCompact(rows.length) },
@@ -217,6 +223,13 @@ export function StockPage() {
           data={rows}
           columns={columns}
           filename={`stock_${mode}.csv`}
+          serverPagination={{
+            page,
+            size: PAGE_SIZE,
+            total: result?.total ?? 0,
+            loading,
+            onPageChange: (p) => void run(p),
+          }}
         />
       )}
     </div>

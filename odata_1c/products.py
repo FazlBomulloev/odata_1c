@@ -1032,6 +1032,32 @@ def _batch_first_photos(
     return result
 
 
+def count_products(
+    client: OData1C,
+    only_active: bool = True,
+    prefix: str = '',
+    include_service: bool = False,
+) -> int:
+    """Общее число товаров с теми же фильтрами, что и get_all."""
+    conds = ['IsFolder eq false']
+    if only_active:
+        conds.append('DeletionMark eq false')
+    if prefix:
+        conds.append(
+            f"startswith(Артикул, '{_esc(prefix)}')"
+        )
+    elif not include_service:
+        conds.append("Артикул ne ''")
+    params = {
+        '$filter': ' and '.join(conds),
+        '$inlinecount': 'allpages',
+        '$top': '0',
+        '$format': 'json',
+    }
+    result = client.get('Catalog_Номенклатура', params)
+    return int(result.get('odata.count') or 0)
+
+
 def get_all_products(
     client: OData1C,
     limit: int = 500,

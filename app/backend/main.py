@@ -61,6 +61,7 @@ from .db import (
 from .odata_async import AsyncOData1C
 from .products_service import (
     article_exists_async,
+    count_products_async,
     create_product_async,
     delete_product_async,
     get_product_async,
@@ -226,24 +227,90 @@ async def _record_run(
     }
 
 
+PAGE_SIZE_DEFAULT = 50
+PAGE_SIZE_MAX = 500
+
+
+def _clamp_page(page: int, size: int) -> tuple[int, int]:
+    page = max(1, int(page or 1))
+    size = min(PAGE_SIZE_MAX, max(1, int(size or PAGE_SIZE_DEFAULT)))
+    return page, size
+
+
+async def _last_snapshot_at(
+    session: AsyncSession, kind: str,
+) -> str | None:
+    q = (
+        select(SyncRun)
+        .where(SyncRun.kind == kind, SyncRun.status == 'ok')
+        .order_by(desc(SyncRun.finished_at))
+        .limit(1)
+    )
+    last = (await session.execute(q)).scalar_one_or_none()
+    return last.finished_at.isoformat() if last else None
+
+
+async def _paginate_stmt(
+    session: AsyncSession,
+    stmt,
+    page: int,
+    size: int,
+    to_dict: Callable[[Any], dict],
+) -> tuple[list[dict], int]:
+    """(records, total) для запроса, возвращающего ORM-объекты."""
+    count_stmt = select(func.count()).select_from(
+        stmt.order_by(None).subquery(),
+    )
+    total = (
+        await session.execute(count_stmt)
+    ).scalar() or 0
+    page_stmt = stmt.limit(size).offset((page - 1) * size)
+    rows = (await session.execute(page_stmt)).scalars().all()
+    return [to_dict(r) for r in rows], int(total)
+
+
+async def _paged_cache(
+    method: str,
+    kind: str,
+    session: AsyncSession,
+    stmt,
+    page: int,
+    size: int,
+    to_dict: Callable[[Any], dict],
+) -> dict[str, Any]:
+    page, size = _clamp_page(page, size)
+    records, total = await _paginate_stmt(
+        session, stmt, page, size, to_dict,
+    )
+    snapshot_at = await _last_snapshot_at(session, kind)
+    return {
+        'source': 'cache',
+        'method': method,
+        'snapshot_at': snapshot_at,
+        'page': page,
+        'size': size,
+        'total': total,
+        'record_count': len(records),
+        'records': records,
+    }
+
+
 async def _cached_response(
     method: str,
     kind: str,
     records: list[dict],
 ) -> dict[str, Any]:
+    """Legacy: неспагинированный ответ (для live-режима и
+    gross-profit, где записи считаются в Python)."""
     async with SessionLocal() as session:
-        q = (
-            select(SyncRun)
-            .where(SyncRun.kind == kind, SyncRun.status == 'ok')
-            .order_by(desc(SyncRun.finished_at))
-            .limit(1)
-        )
-        last = (await session.execute(q)).scalar_one_or_none()
-    snapshot_at = last.finished_at.isoformat() if last else None
+        snapshot_at = await _last_snapshot_at(session, kind)
     return {
         'source': 'cache',
         'method': method,
         'snapshot_at': snapshot_at,
+        'page': 1,
+        'size': len(records),
+        'total': len(records),
         'record_count': len(records),
         'records': records,
     }
@@ -307,6 +374,8 @@ def _stock_dict(r: StockSnapshot) -> dict:
 async def api_marketplace_sales(
     req: MarketplaceSalesRequest,
     live: bool = Query(False),
+    page: int = Query(1, ge=1),
+    size: int = Query(PAGE_SIZE_DEFAULT, ge=1, le=PAGE_SIZE_MAX),
     session: AsyncSession = Depends(get_session),
 ):
     if live:
@@ -325,10 +394,10 @@ async def api_marketplace_sales(
     ]
     if req.channel:
         conds.append(Sale.channel == req.channel)
-    q = select(Sale).where(*conds).order_by(Sale.date)
-    rows = (await session.execute(q)).scalars().all()
-    return await _cached_response(
-        'sales.marketplace', 'sales', [_sale_dict(r) for r in rows],
+    stmt = select(Sale).where(*conds).order_by(Sale.date, Sale.id)
+    return await _paged_cache(
+        'sales.marketplace', 'sales', session,
+        stmt, page, size, _sale_dict,
     )
 
 
@@ -336,6 +405,8 @@ async def api_marketplace_sales(
 async def api_retail_sales(
     req: RetailSalesRequest,
     live: bool = Query(False),
+    page: int = Query(1, ge=1),
+    size: int = Query(PAGE_SIZE_DEFAULT, ge=1, le=PAGE_SIZE_MAX),
     session: AsyncSession = Depends(get_session),
 ):
     if live:
@@ -346,18 +417,18 @@ async def api_retail_sales(
         return await _record_run(
             'sales.retail', req.model_dump(mode='json'), fn,
         )
-    q = (
+    stmt = (
         select(Sale)
         .where(
             Sale.date >= req.date_from,
             Sale.date <= req.date_to,
             Sale.channel == 'магазин',
         )
-        .order_by(Sale.date)
+        .order_by(Sale.date, Sale.id)
     )
-    rows = (await session.execute(q)).scalars().all()
-    return await _cached_response(
-        'sales.retail', 'sales', [_sale_dict(r) for r in rows],
+    return await _paged_cache(
+        'sales.retail', 'sales', session,
+        stmt, page, size, _sale_dict,
     )
 
 
@@ -365,6 +436,8 @@ async def api_retail_sales(
 async def api_all_sales(
     req: AllSalesRequest,
     live: bool = Query(False),
+    page: int = Query(1, ge=1),
+    size: int = Query(PAGE_SIZE_DEFAULT, ge=1, le=PAGE_SIZE_MAX),
     session: AsyncSession = Depends(get_session),
 ):
     if live:
@@ -375,17 +448,17 @@ async def api_all_sales(
         return await _record_run(
             'sales.all', req.model_dump(mode='json'), fn,
         )
-    q = (
+    stmt = (
         select(Sale)
         .where(
             Sale.date >= req.date_from,
             Sale.date <= req.date_to,
         )
-        .order_by(Sale.date)
+        .order_by(Sale.date, Sale.id)
     )
-    rows = (await session.execute(q)).scalars().all()
-    return await _cached_response(
-        'sales.all', 'sales', [_sale_dict(r) for r in rows],
+    return await _paged_cache(
+        'sales.all', 'sales', session,
+        stmt, page, size, _sale_dict,
     )
 
 
@@ -393,6 +466,8 @@ async def api_all_sales(
 async def api_movements(
     req: MovementsRequest,
     live: bool = Query(False),
+    page: int = Query(1, ge=1),
+    size: int = Query(PAGE_SIZE_DEFAULT, ge=1, le=PAGE_SIZE_MAX),
     session: AsyncSession = Depends(get_session),
 ):
     if req.kind not in MOVEMENT_KIND_MAP:
@@ -431,11 +506,14 @@ async def api_movements(
         op_types = _KIND_TO_OPS.get(req.kind, ())
         if op_types:
             conds.append(Movement.operation_type.in_(op_types))
-    q = select(Movement).where(*conds).order_by(Movement.period)
-    rows = (await session.execute(q)).scalars().all()
-    return await _cached_response(
-        f'movements.{req.kind}', 'movements',
-        [_movement_dict(r) for r in rows],
+    stmt = (
+        select(Movement)
+        .where(*conds)
+        .order_by(Movement.period, Movement.id)
+    )
+    return await _paged_cache(
+        f'movements.{req.kind}', 'movements', session,
+        stmt, page, size, _movement_dict,
     )
 
 
@@ -452,6 +530,8 @@ _GP_GROUP_COLS: dict[str, ColumnElement] = {
 @data_router.post('/api/gross-profit')
 async def api_gross_profit(
     req: GrossProfitRequest,
+    page: int = Query(1, ge=1),
+    size: int = Query(PAGE_SIZE_DEFAULT, ge=1, le=PAGE_SIZE_MAX),
     session: AsyncSession = Depends(get_session),
 ):
     group_cols: list[ColumnElement] = []
@@ -493,7 +573,14 @@ async def api_gross_profit(
     stmt = select(*group_cols, *agg_cols).where(*conds)
     if group_cols:
         stmt = stmt.group_by(*group_cols).order_by(*group_cols)
-    rows = (await session.execute(stmt)).all()
+
+    page, size = _clamp_page(page, size)
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total = int(
+        (await session.execute(count_stmt)).scalar() or 0
+    )
+    paged = stmt.limit(size).offset((page - 1) * size)
+    rows = (await session.execute(paged)).all()
 
     keys = list(req.group_by or [])
     records: list[dict] = []
@@ -526,9 +613,19 @@ async def api_gross_profit(
         })
         records.append(rec)
 
-    return await _cached_response(
-        'gross_profit', 'sales_turnover', records,
+    snapshot_at = await _last_snapshot_at(
+        session, 'sales_turnover',
     )
+    return {
+        'source': 'cache',
+        'method': 'gross_profit',
+        'snapshot_at': snapshot_at,
+        'page': page,
+        'size': size,
+        'total': total,
+        'record_count': len(records),
+        'records': records,
+    }
 
 
 def _month_floor(dt: datetime) -> datetime:
@@ -539,6 +636,8 @@ def _month_floor(dt: datetime) -> datetime:
 async def api_stock(
     req: StockRequest,
     live: bool = Query(False),
+    page: int = Query(1, ge=1),
+    size: int = Query(PAGE_SIZE_DEFAULT, ge=1, le=PAGE_SIZE_MAX),
     session: AsyncSession = Depends(get_session),
 ):
     if live:
@@ -567,19 +666,20 @@ async def api_stock(
         )
     if req.only_positive:
         conds.append(StockSnapshot.quantity > 0)
-    q = select(StockSnapshot)
+    stmt = select(StockSnapshot)
     if conds:
-        q = q.where(*conds)
+        stmt = stmt.where(*conds)
     # Товары без артикула (прочие ТМЦ / оборудование) — в конец списка,
     # чтобы первые страницы показывали основную одежду.
-    q = q.order_by(
+    stmt = stmt.order_by(
         (StockSnapshot.article == '').asc(),
         StockSnapshot.article,
         StockSnapshot.warehouse,
+        StockSnapshot.id,
     )
-    rows = (await session.execute(q)).scalars().all()
-    return await _cached_response(
-        'stock', 'stock', [_stock_dict(r) for r in rows],
+    return await _paged_cache(
+        'stock', 'stock', session,
+        stmt, page, size, _stock_dict,
     )
 
 
@@ -587,6 +687,8 @@ async def api_stock(
 async def api_stock_by_article(
     req: StockByArticleRequest,
     live: bool = Query(False),
+    page: int = Query(1, ge=1),
+    size: int = Query(PAGE_SIZE_DEFAULT, ge=1, le=PAGE_SIZE_MAX),
     session: AsyncSession = Depends(get_session),
 ):
     if live:
@@ -599,15 +701,14 @@ async def api_stock_by_article(
         return await _cached_response(
             'stock.by_article', 'stock', [],
         )
-    q = (
+    stmt = (
         select(StockSnapshot)
         .where(StockSnapshot.article == req.article)
-        .order_by(StockSnapshot.warehouse)
+        .order_by(StockSnapshot.warehouse, StockSnapshot.id)
     )
-    rows = (await session.execute(q)).scalars().all()
-    return await _cached_response(
-        'stock.by_article', 'stock',
-        [_stock_dict(r) for r in rows],
+    return await _paged_cache(
+        'stock.by_article', 'stock', session,
+        stmt, page, size, _stock_dict,
     )
 
 
@@ -747,29 +848,43 @@ _EXT_MIME = {
 }
 
 
-@data_router.get(
-    '/api/products',
-    response_model=list[ProductListItem],
-)
+@data_router.get('/api/products')
 async def api_products_list(
     prefix: str = Query(''),
-    limit: int = Query(200, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
+    page: int = Query(1, ge=1),
+    size: int = Query(PAGE_SIZE_DEFAULT, ge=1, le=PAGE_SIZE_MAX),
     only_active: bool = Query(True),
     include_service: bool = Query(False),
 ):
+    page, size = _clamp_page(page, size)
     try:
-        rows = await list_products_async(
-            prefix=prefix,
-            limit=limit,
-            offset=offset,
-            only_active=only_active,
-            include_service=include_service,
+        rows, total = await asyncio.gather(
+            list_products_async(
+                prefix=prefix,
+                limit=size,
+                offset=(page - 1) * size,
+                only_active=only_active,
+                include_service=include_service,
+            ),
+            count_products_async(
+                prefix=prefix,
+                only_active=only_active,
+                include_service=include_service,
+            ),
         )
     except Exception as exc:
         logger.exception('Ошибка получения товаров')
         raise HTTPException(status_code=502, detail=str(exc))
-    return rows
+    return {
+        'source': 'live',
+        'method': 'products',
+        'snapshot_at': None,
+        'page': page,
+        'size': size,
+        'total': int(total),
+        'record_count': len(rows),
+        'records': rows,
+    }
 
 
 @data_router.get('/api/products/next-article')

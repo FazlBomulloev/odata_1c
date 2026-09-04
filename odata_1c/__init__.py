@@ -26,6 +26,7 @@ from .movements import (
     list_recorder_types,
 )
 from .products import (
+    count_products,
     create_product,
     delete_product,
     get_all_products,
@@ -73,6 +74,7 @@ __all__ = [
     'delete_product',
     'get_product',
     'get_all_products',
+    'count_products',
     'list_product_photos',
     'get_photo_bytes',
     'search_by_article',

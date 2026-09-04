@@ -6,6 +6,7 @@ from odata_1c import (
     ProductData,
     SizeData,
     article_exists,
+    count_products,
     create_product,
     delete_product,
     find_free_article,
@@ -60,6 +61,22 @@ async def list_products_async(
             client,
             limit=limit,
             offset=offset,
+            only_active=only_active,
+            prefix=prefix,
+            include_service=include_service,
+        )
+    return await asyncio.to_thread(_work)
+
+
+async def count_products_async(
+    prefix: str,
+    only_active: bool,
+    include_service: bool = False,
+) -> int:
+    def _work() -> int:
+        client = _build_client()
+        return count_products(
+            client,
             only_active=only_active,
             prefix=prefix,
             include_service=include_service,
