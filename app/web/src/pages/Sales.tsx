@@ -76,7 +76,7 @@ const columns: Column<SaleRow>[] = [
   },
   { key: 'quantity', header: 'Кол-во', numeric: true, width: '90px' },
   {
-    key: 'amount', header: 'Сумма, сом', numeric: true,
+    key: 'amount', header: 'Сумма ₽', numeric: true,
     format: (v) => {
       const n = Number(v ?? 0);
       const cls = n < 0 ? 'text-negative' : 'text-text';

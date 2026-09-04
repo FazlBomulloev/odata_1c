@@ -288,7 +288,7 @@ export function ProductForm({
             />
           </div>
           <div>
-            <Label>Цена, сом</Label>
+            <Label>Цена, ₽</Label>
             <Input
               type="number"
               inputMode="decimal"
