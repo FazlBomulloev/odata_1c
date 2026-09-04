@@ -662,21 +662,27 @@ def get_photo_bytes(
     )
     ext = (file_meta.get('Расширение') or 'jpg').lstrip('.')
 
-    link_params = {
-        '$filter': f"Файл_Key eq guid'{file_key}'",
-        '$select': 'ХранилищеДвоичныхДанных_Key',
-        '$format': 'json',
-    }
-    link_result = client.get(
-        'InformationRegister_ХранилищеФайлов',
-        link_params,
+    link_endpoint = (
+        "InformationRegister_ХранилищеФайлов("
+        f"Файл='{file_key}',"
+        "Файл_Type="
+        "'StandardODATA.Catalog_НоменклатураПрисоединенныеФайлы')"
     )
-    link_rows = link_result.get('value', [])
-    if not link_rows:
+    try:
+        link_row = client.get(
+            link_endpoint,
+            {'$select': 'ХранилищеДвоичныхДанных_Key',
+             '$format': 'json'},
+        )
+    except ODataNotFoundError:
         raise ODataNotFoundError(
             f'Нет двоичных данных для файла {file_key}'
         )
-    bd_key = link_rows[0]['ХранилищеДвоичныхДанных_Key']
+    bd_key = link_row.get('ХранилищеДвоичныхДанных_Key') or ''
+    if not bd_key or bd_key == EMPTY_GUID:
+        raise ODataNotFoundError(
+            f'Нет двоичных данных для файла {file_key}'
+        )
 
     bd_endpoint = (
         f"Catalog_ХранилищеДвоичныхДанных(guid'{bd_key}')"
