@@ -663,7 +663,7 @@ def get_photo_bytes(
     ext = (file_meta.get('Расширение') or 'jpg').lstrip('.')
 
     link_params = {
-        '$filter': f"Файл eq guid'{file_key}'",
+        '$filter': f"Файл_Key eq guid'{file_key}'",
         '$select': 'ХранилищеДвоичныхДанных_Key',
         '$format': 'json',
     }

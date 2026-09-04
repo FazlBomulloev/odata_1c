@@ -32,7 +32,7 @@ export function ProductsPage() {
     try {
       const r = await api.productsList({
         prefix,
-        limit: 500,
+        limit: 100,
         only_active: onlyActive,
       });
       setRows(r);
