@@ -89,8 +89,12 @@ class ProductCreate(BaseModel):
 
 class ProductUpdate(BaseModel):
     name: str | None = None
+    description: str | None = None
     price: float | None = None
+    category: str | None = None
+    group: str | None = None
     sizes: list[SizeIn] = Field(default_factory=list)
+    photos: list[str] = Field(default_factory=list)
 
 
 class ProductSizeShort(BaseModel):

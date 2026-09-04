@@ -277,8 +277,12 @@ export function ProductsPage() {
             form.mode === 'edit'
               ? {
                   article: form.row.article,
-                  name: form.row.name,
+                  name: form.row.full_name || form.row.name,
                   price: String(form.row.price || ''),
+                  category: form.row.category_name || '',
+                  color: form.row.color || '',
+                  group: form.row.group_name || '',
+                  existingSizes: form.row.sizes || [],
                 }
               : undefined
           }

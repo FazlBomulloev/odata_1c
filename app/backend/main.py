@@ -993,8 +993,14 @@ async def api_products_update(
     payload: dict = {}
     if req.name is not None:
         payload['name'] = req.name
+    if req.description is not None:
+        payload['description'] = req.description
     if req.price is not None:
         payload['price'] = req.price
+    if req.category is not None:
+        payload['category'] = req.category
+    if req.group is not None:
+        payload['group'] = req.group
     if req.sizes:
         payload['sizes'] = [
             {
@@ -1004,6 +1010,8 @@ async def api_products_update(
             }
             for s in req.sizes
         ]
+    if req.photos:
+        payload['photos'] = req.photos
     if not payload:
         raise HTTPException(
             status_code=400,

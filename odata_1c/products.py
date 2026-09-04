@@ -318,21 +318,47 @@ def _upload_photo(
     photo_url: str,
     index: int = 0,
 ) -> dict:
-    """Загружает фото в 1С через 3 объекта."""
-    logger.info('Загружаю фото %s', photo_url)
-    try:
-        resp = requests.get(photo_url, timeout=_PHOTO_TIMEOUT)
-        resp.raise_for_status()
-    except requests.RequestException as exc:
-        logger.warning('Не удалось скачать фото: %s', exc)
-        return {}
+    """Загружает фото в 1С через 3 объекта.
 
-    photo_bytes = resp.content
+    photo_url может быть либо HTTP(S)-ссылкой, либо data-URL
+    вида data:image/jpeg;base64,<b64>.
+    """
+    logger.info(
+        'Загружаю фото %s',
+        photo_url[:80] + ('…' if len(photo_url) > 80 else ''),
+    )
+    if photo_url.startswith('data:'):
+        try:
+            header, b64 = photo_url.split(',', 1)
+            mime = header.split(':', 1)[1].split(';', 1)[0]
+            photo_bytes = base64.b64decode(b64)
+        except (ValueError, TypeError, IndexError) as exc:
+            logger.warning('Битый data-URL: %s', exc)
+            return {}
+        mime_ext = {
+            'image/jpeg': 'jpg', 'image/jpg': 'jpg',
+            'image/png': 'png', 'image/webp': 'webp',
+            'image/gif': 'gif',
+        }
+        ext = mime_ext.get(mime, 'jpg')
+    else:
+        try:
+            resp = requests.get(
+                photo_url, timeout=_PHOTO_TIMEOUT,
+            )
+            resp.raise_for_status()
+        except requests.RequestException as exc:
+            logger.warning(
+                'Не удалось скачать фото: %s', exc,
+            )
+            return {}
+        photo_bytes = resp.content
+        ext = _detect_ext(photo_url)
+
     photo_b64 = base64.b64encode(photo_bytes).decode()
     photo_hash = base64.b64encode(
         hashlib.sha256(photo_bytes).digest(),
     ).decode()
-    ext = _detect_ext(photo_url)
     filename = f'photo_{index}'
     now = datetime.now(timezone.utc).strftime(
         '%Y-%m-%dT%H:%M:%S',
@@ -532,16 +558,35 @@ def update_product(
     update_data: dict,
     price_type_keys: list[str] | None = None,
 ) -> dict:
-    """Обновляет товар по артикулу."""
+    """Обновляет товар по артикулу.
+
+    Принимает поля: name, description, price, category, group,
+    sizes (новые), photos (новые URL/data-URL). Цвет менять
+    через update пока нельзя — только при создании.
+    """
     nom = get_nomenclature_by_article(client, article)
     nom_key = nom['Ref_Key']
 
-    fields = {}
-    if 'name' in update_data:
+    fields: dict = {}
+    if 'name' in update_data and update_data['name']:
         fields['Description'] = update_data['name']
-        fields['НаименованиеПолное'] = (
-            update_data['name']
+        fields['НаименованиеПолное'] = update_data['name']
+    if 'description' in update_data:
+        fields['Комментарий'] = update_data['description'] or ''
+    if 'category' in update_data and update_data['category']:
+        cat_key = _find_or_create_category(
+            client, update_data['category'],
         )
+        if cat_key:
+            fields['КатегорияНоменклатуры_Key'] = cat_key
+    if 'group' in update_data:
+        grp_value = update_data['group']
+        if grp_value:
+            grp_key = _find_group_key(client, grp_value)
+            if grp_key:
+                fields['Parent_Key'] = grp_key
+        else:
+            fields['Parent_Key'] = EMPTY_GUID
 
     if fields:
         endpoint = (
@@ -601,6 +646,31 @@ def update_product(
                 client, nom_key, char_key,
                 float(update_data['price']),
                 price_type_keys,
+            )
+
+    new_photos = update_data.get('photos') or []
+    uploaded = []
+    for i, url in enumerate(new_photos):
+        if not url:
+            continue
+        photo = _upload_photo(client, nom_key, url, i)
+        if photo:
+            uploaded.append(photo)
+    if uploaded:
+        endpoint = (
+            f"Catalog_Номенклатура(guid'{nom_key}')"
+        )
+        current_main = (
+            nom.get('ФайлКартинки_Key') or ''
+        )
+        if not current_main or current_main == EMPTY_GUID:
+            client.patch(
+                endpoint,
+                {'ФайлКартинки_Key': uploaded[0]['Ref_Key']},
+            )
+            logger.info(
+                'Основное фото задано: %s',
+                uploaded[0]['Ref_Key'],
             )
 
     return get_product(client, article)

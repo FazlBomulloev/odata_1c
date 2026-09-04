@@ -107,8 +107,12 @@ export type ProductCreatePayload = {
 
 export type ProductUpdatePayload = {
   name?: string;
+  description?: string;
   price?: number;
+  category?: string;
+  group?: string;
   sizes?: ProductSizePayload[];
+  photos?: string[];
 };
 
 export type ProductDetail = {
