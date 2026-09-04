@@ -385,15 +385,20 @@ function ProductCard({
             className="mt-1.5 flex flex-wrap gap-1"
             title={`${row.sizes.length} размер(ов)`}
           >
-            {row.sizes.slice(0, 8).map((s, i) => (
-              <span
-                key={`${s.global}-${s.ru}-${i}`}
-                className="text-10 font-mono px-1.5 py-0.5
-                rounded bg-accent-tint text-text tabular"
-              >
-                {s.ru || s.global}
-              </span>
-            ))}
+            {row.sizes.slice(0, 8).map((s, i) => {
+              const label = s.global && s.ru
+                ? `${s.global}, ${s.ru}`
+                : s.ru || s.global || '?';
+              return (
+                <span
+                  key={`${s.global}-${s.ru}-${i}`}
+                  className="text-10 font-mono px-1.5 py-0.5
+                  rounded bg-accent-tint text-text tabular"
+                >
+                  {label}
+                </span>
+              );
+            })}
             {row.sizes.length > 8 && (
               <span
                 className="text-10 text-text-3 px-1.5 py-0.5"

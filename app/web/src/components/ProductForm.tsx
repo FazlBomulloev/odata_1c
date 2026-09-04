@@ -288,7 +288,7 @@ export function ProductForm({
             />
           </div>
           <div>
-            <Label>Цена, ₽</Label>
+            <Label>Цена, сом</Label>
             <Input
               type="number"
               inputMode="decimal"
@@ -379,7 +379,7 @@ export function ProductForm({
                     border border-border"
                   >
                     {s.global && s.ru
-                      ? `${s.global} · ${s.ru}`
+                      ? `${s.global}, ${s.ru}`
                       : s.ru || s.global || '?'}
                   </span>
                 ))}

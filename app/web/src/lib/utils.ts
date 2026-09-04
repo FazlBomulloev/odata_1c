@@ -17,9 +17,11 @@ export function fmtNumber(n: number | null | undefined) {
   return Number.isInteger(n) ? nf0.format(n) : nf2.format(n);
 }
 
+export const CURRENCY_SYMBOL = 'сом';
+
 export function fmtMoney(n: number | null | undefined) {
   if (n === null || n === undefined || Number.isNaN(n)) return '—';
-  return `${nf2.format(n)} ₽`;
+  return `${nf2.format(n)} ${CURRENCY_SYMBOL}`;
 }
 
 export function fmtCompact(n: number | null | undefined) {

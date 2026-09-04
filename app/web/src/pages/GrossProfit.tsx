@@ -160,11 +160,11 @@ export function GrossProfitPage() {
     cols.push(
       { key: 'quantity', header: 'Кол-во', numeric: true, width: '90px' },
       {
-        key: 'revenue', header: 'Выручка ₽', numeric: true,
+        key: 'revenue', header: 'Выручка, сом', numeric: true,
         format: (v) => fmtMoney(Number(v ?? 0)),
       },
       {
-        key: 'cost', header: 'Себестоимость ₽', numeric: true,
+        key: 'cost', header: 'Себестоимость, сом', numeric: true,
         format: (v) => {
           const n = Number(v ?? 0);
           const cls = n < 0 ? 'text-negative' : 'text-ink';
@@ -172,7 +172,7 @@ export function GrossProfitPage() {
         },
       },
       {
-        key: 'gross_profit', header: 'Прибыль ₽', numeric: true,
+        key: 'gross_profit', header: 'Прибыль, сом', numeric: true,
         format: (v) => {
           const n = Number(v ?? 0);
           const cls = n < 0 ? 'text-negative' : 'text-positive';
@@ -189,7 +189,7 @@ export function GrossProfitPage() {
       },
       {
         key: 'unit_cost',
-        header: 'Себест., ₽ / шт.',
+        header: 'Себест., сом/шт.',
         numeric: true,
         format: (v) => fmtMoney(Number(v ?? 0)),
       },
