@@ -52,6 +52,7 @@ async def list_products_async(
     limit: int,
     offset: int,
     only_active: bool,
+    include_service: bool = False,
 ) -> list[dict]:
     def _work() -> list[dict]:
         client = _build_client()
@@ -61,6 +62,7 @@ async def list_products_async(
             offset=offset,
             only_active=only_active,
             prefix=prefix,
+            include_service=include_service,
         )
     return await asyncio.to_thread(_work)
 

@@ -1032,8 +1032,14 @@ def get_all_products(
     offset: int = 0,
     only_active: bool = True,
     prefix: str = '',
+    include_service: bool = False,
 ) -> list[dict]:
     """Список товаров с базовыми данными.
+
+    По умолчанию выкидывает служебные позиции с пустым артикулом
+    (лейблы, молнии, фурнитура — они всё равно без фото/цены/
+    размеров и засоряют первую страницу). Передайте
+    include_service=True, чтобы увидеть их.
 
     Батчами обогащается: название категории и группы, цвет из
     ТЧ ДополнительныеРеквизиты, фолбэк фото на первый файл, если
@@ -1047,6 +1053,8 @@ def get_all_products(
         conds.append(
             f"startswith(Артикул, '{_esc(prefix)}')"
         )
+    elif not include_service:
+        conds.append("Артикул ne ''")
     params = {
         '$filter': ' and '.join(conds),
         '$select': (

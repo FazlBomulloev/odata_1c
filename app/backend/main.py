@@ -756,6 +756,7 @@ async def api_products_list(
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     only_active: bool = Query(True),
+    include_service: bool = Query(False),
 ):
     try:
         rows = await list_products_async(
@@ -763,6 +764,7 @@ async def api_products_list(
             limit=limit,
             offset=offset,
             only_active=only_active,
+            include_service=include_service,
         )
     except Exception as exc:
         logger.exception('Ошибка получения товаров')
