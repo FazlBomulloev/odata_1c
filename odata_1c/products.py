@@ -22,6 +22,31 @@ from .search import (
     get_nomenclature_by_article,
 )
 
+
+def _parse_size_lenient(
+    description: str, article: str = '',
+) -> tuple[str, str]:
+    """Толерантный разбор Description характеристики.
+
+    Понимает форматы, встречающиеся в разных базах 1С:
+    '{арт}-{global}, {ru}', '{global}, {ru}', 'L, 50',
+    просто 'L' (только глобальный), просто '42' (только ru).
+    Возвращает (global, ru).
+    """
+    if not description:
+        return ('', '')
+    body = description.strip()
+    if article:
+        prefix = f'{article}-'
+        if body.lower().startswith(prefix.lower()):
+            body = body[len(prefix):].strip()
+    if ', ' in body:
+        left, right = body.split(', ', 1)
+        return (left.strip(), right.strip())
+    if body.replace(' ', '').isdigit():
+        return ('', body)
+    return (body, '')
+
 logger = logging.getLogger(__name__)
 
 EMPTY_GUID = '00000000-0000-0000-0000-000000000000'
@@ -605,7 +630,7 @@ def list_product_photos(
     """Возвращает присоединённые файлы товара."""
     params = {
         '$filter': (
-            f"ВладелецФайла eq guid'{nom_key}' and "
+            f"ВладелецФайла_Key eq guid'{nom_key}' and "
             f"DeletionMark eq false"
         ),
         '$select': (
@@ -661,27 +686,42 @@ def get_photo_bytes(
     return base64.b64decode(payload), ext
 
 
-def _load_prices_by_keys(
+def _load_prices_and_chars(
     client: OData1C,
     nom_keys: list[str],
-) -> dict[str, float]:
-    """Возвращает {nom_key: базовая цена} батчами."""
-    result: dict[str, float] = {}
+) -> tuple[dict[str, float], dict[str, list[str]]]:
+    """Одним проходом: цены и Характеристика_Key per nom_key.
+
+    Возвращает ({nom_key: цена}, {nom_key: [char_key, ...]}).
+    Приоритет цены: сначала актуальная строка с ВидЦен_Key из
+    ODATA_PRICE_TYPE_GUIDS (если задан), при её отсутствии —
+    любая актуальная, при её отсутствии — любая. Внутри
+    приоритета побеждает latest по Period.
+    """
+    prices: dict[str, float] = {}
+    chars_map: dict[str, list[str]] = {}
+    seen_chars: dict[str, set[str]] = {}
     if not nom_keys:
-        return result
+        return prices, chars_map
+    preferred = set(ODATA_PRICE_TYPE_GUIDS)
+    # {nom_key: (priority, period, price)}
+    # priority: 2 — preferred+актуальная, 1 — актуальная,
+    # 0 — любая
+    best: dict[str, tuple[int, str, float]] = {}
     batch = 40
-    for i in range(0, len(nom_keys), batch):
-        chunk = nom_keys[i:i + batch]
+    unique = [k for k in set(nom_keys) if k]
+    for i in range(0, len(unique), batch):
+        chunk = unique[i:i + batch]
         flt = ' or '.join(
             f"Номенклатура_Key eq guid'{k}'"
             for k in chunk
         )
-        empty_flt = (
-            f" and Характеристика_Key eq guid'{EMPTY_GUID}'"
-        )
         params = {
-            '$filter': f'({flt}){empty_flt}',
-            '$select': 'Номенклатура_Key,Цена,Period',
+            '$filter': flt,
+            '$select': (
+                'Номенклатура_Key,Характеристика_Key,'
+                'ВидЦен_Key,Цена,Period,Актуальность'
+            ),
             '$format': 'json',
         }
         try:
@@ -691,16 +731,298 @@ def _load_prices_by_keys(
             )
         except ODataNotFoundError:
             continue
-        latest: dict[str, tuple[str, float]] = {}
         for row in data.get('value', []):
-            k = row.get('Номенклатура_Key') or ''
+            nk = row.get('Номенклатура_Key') or ''
+            if not nk:
+                continue
+            ck = row.get('Характеристика_Key') or ''
+            if ck and ck != EMPTY_GUID:
+                bucket = seen_chars.setdefault(nk, set())
+                if ck not in bucket:
+                    bucket.add(ck)
+                    chars_map.setdefault(nk, []).append(ck)
             price = float(row.get('Цена') or 0)
+            if price <= 0:
+                continue
+            actual = bool(row.get('Актуальность'))
+            vid = row.get('ВидЦен_Key') or ''
+            if actual and vid in preferred:
+                prio = 2
+            elif actual:
+                prio = 1
+            else:
+                prio = 0
             period = row.get('Period') or ''
-            prev = latest.get(k)
-            if prev is None or period > prev[0]:
-                latest[k] = (period, price)
-        for k, (_, price) in latest.items():
-            result[k] = price
+            prev = best.get(nk)
+            if (prev is None or prio > prev[0] or
+                    (prio == prev[0] and period > prev[1])):
+                best[nk] = (prio, period, price)
+    for nk, (_, _, price) in best.items():
+        prices[nk] = price
+    return prices, chars_map
+
+
+_PHOTO_EXTS = {'jpg', 'jpeg', 'png', 'webp', 'gif'}
+
+
+def _batch_names(
+    client: OData1C,
+    endpoint: str,
+    keys: list[str],
+) -> dict[str, str]:
+    """Батч Description по Ref_Key. {ref_key: description}."""
+    result: dict[str, str] = {}
+    unique = [
+        k for k in set(keys)
+        if k and k != EMPTY_GUID
+    ]
+    if not unique:
+        return result
+    for i in range(0, len(unique), 40):
+        chunk = unique[i:i + 40]
+        flt = ' or '.join(
+            f"Ref_Key eq guid'{k}'" for k in chunk
+        )
+        params = {
+            '$filter': flt,
+            '$select': 'Ref_Key,Description',
+            '$format': 'json',
+        }
+        try:
+            data = client.get(endpoint, params)
+        except ODataNotFoundError:
+            logger.warning('Справочник %s недоступен', endpoint)
+            return result
+        for row in data.get('value', []):
+            result[row['Ref_Key']] = (
+                row.get('Description') or ''
+            )
+    return result
+
+
+def _batch_colors(
+    client: OData1C,
+    nom_keys: list[str],
+) -> dict[str, str]:
+    """{nom_key: цвет} через ТЧ ДополнительныеРеквизиты."""
+    result: dict[str, str] = {}
+    if not ODATA_COLOR_PROP_GUID or not nom_keys:
+        return result
+    unique = [k for k in set(nom_keys) if k]
+    value_by_nom: dict[str, str] = {}
+    for i in range(0, len(unique), 40):
+        chunk = unique[i:i + 40]
+        flt = ' or '.join(
+            f"Ref_Key eq guid'{k}'" for k in chunk
+        )
+        params = {
+            '$filter': (
+                f'({flt}) and Свойство_Key eq '
+                f"guid'{ODATA_COLOR_PROP_GUID}'"
+            ),
+            '$select': 'Ref_Key,Значение',
+            '$format': 'json',
+        }
+        try:
+            data = client.get(
+                'Catalog_Номенклатура_ДополнительныеРеквизиты',
+                params,
+            )
+        except ODataNotFoundError:
+            return result
+        for row in data.get('value', []):
+            val = row.get('Значение') or ''
+            if val and val != EMPTY_GUID:
+                value_by_nom[row['Ref_Key']] = val
+    if not value_by_nom:
+        return result
+    names = _batch_names(
+        client,
+        'Catalog_ЗначенияСвойствОбъектов',
+        list(value_by_nom.values()),
+    )
+    for nom_key, val_key in value_by_nom.items():
+        color = names.get(val_key, '')
+        if color:
+            result[nom_key] = color
+    return result
+
+
+def _batch_char_keys_by_nom(
+    client: OData1C,
+    nom_keys: list[str],
+    seed: dict[str, list[str]] | None = None,
+) -> dict[str, list[str]]:
+    """{nom_key: [char_key, ...]} через штрихкоды и seed.
+
+    Прямой фильтр по Owner в характеристиках 1С не поддерживает
+    (500), поэтому ссылка nom→char берётся из ИнфРегистра
+    ШтрихкодыНоменклатуры (где Номенклатура_Key фильтруется)
+    объединённая с seed (обычно — характеристики из цен).
+    """
+    result: dict[str, list[str]] = {}
+    seen: dict[str, set[str]] = {}
+    if seed:
+        for nk, cks in seed.items():
+            bucket = seen.setdefault(nk, set())
+            for ck in cks:
+                if ck and ck != EMPTY_GUID and ck not in bucket:
+                    bucket.add(ck)
+                    result.setdefault(nk, []).append(ck)
+    unique = [k for k in set(nom_keys) if k]
+    if not unique:
+        return result
+    for i in range(0, len(unique), 40):
+        chunk = unique[i:i + 40]
+        flt = ' or '.join(
+            f"Номенклатура_Key eq guid'{k}'" for k in chunk
+        )
+        params = {
+            '$filter': flt,
+            '$select': (
+                'Номенклатура_Key,Характеристика_Key'
+            ),
+            '$format': 'json',
+        }
+        try:
+            data = client.get(
+                'InformationRegister_ШтрихкодыНоменклатуры',
+                params,
+            )
+        except ODataNotFoundError:
+            continue
+        for row in data.get('value', []):
+            nk = row.get('Номенклатура_Key') or ''
+            ck = row.get('Характеристика_Key') or ''
+            if not nk or not ck or ck == EMPTY_GUID:
+                continue
+            bucket = seen.setdefault(nk, set())
+            if ck in bucket:
+                continue
+            bucket.add(ck)
+            result.setdefault(nk, []).append(ck)
+    return result
+
+
+def _batch_char_descriptions(
+    client: OData1C,
+    char_keys: list[str],
+) -> dict[str, str]:
+    """{char_key: Description} батчем по Ref_Key."""
+    result: dict[str, str] = {}
+    unique = [k for k in set(char_keys) if k and k != EMPTY_GUID]
+    if not unique:
+        return result
+    for i in range(0, len(unique), 40):
+        chunk = unique[i:i + 40]
+        flt = ' or '.join(
+            f"Ref_Key eq guid'{k}'" for k in chunk
+        )
+        params = {
+            '$filter': flt,
+            '$select': 'Ref_Key,Description,DeletionMark',
+            '$format': 'json',
+        }
+        try:
+            data = client.get(
+                'Catalog_ХарактеристикиНоменклатуры',
+                params,
+            )
+        except ODataNotFoundError:
+            return result
+        for row in data.get('value', []):
+            if row.get('DeletionMark'):
+                continue
+            result[row['Ref_Key']] = (
+                row.get('Description') or ''
+            )
+    return result
+
+
+def _batch_sizes(
+    client: OData1C,
+    nom_articles: dict[str, str],
+    seed_chars: dict[str, list[str]] | None = None,
+) -> dict[str, list[dict]]:
+    """{nom_key: [{global, ru}, ...]} из характеристик.
+
+    Порядок: как отдал 1С. Дубли по (global, ru) убираются.
+    seed_chars — предварительно собранные char_keys (например,
+    из регистра цен) объединяются со штрихкодами.
+    """
+    result: dict[str, list[dict]] = {}
+    if not nom_articles:
+        return result
+    char_map = _batch_char_keys_by_nom(
+        client, list(nom_articles.keys()), seed=seed_chars,
+    )
+    all_chars = [
+        ck for cks in char_map.values() for ck in cks
+    ]
+    descriptions = _batch_char_descriptions(client, all_chars)
+    for nom_key, chars in char_map.items():
+        article = nom_articles.get(nom_key, '')
+        seen: set[tuple[str, str]] = set()
+        bucket: list[dict] = []
+        for ck in chars:
+            desc = descriptions.get(ck, '')
+            if not desc:
+                continue
+            g, ru = _parse_size_lenient(desc, article)
+            if not (g or ru):
+                continue
+            pair = (g, ru)
+            if pair in seen:
+                continue
+            seen.add(pair)
+            bucket.append({'global': g, 'ru': ru})
+        if bucket:
+            result[nom_key] = bucket
+    return result
+
+
+def _batch_first_photos(
+    client: OData1C,
+    nom_keys: list[str],
+) -> dict[str, str]:
+    """{nom_key: file_key} — первый присоединённый файл."""
+    result: dict[str, str] = {}
+    unique = [k for k in set(nom_keys) if k]
+    if not unique:
+        return result
+    for i in range(0, len(unique), 40):
+        chunk = unique[i:i + 40]
+        flt = ' or '.join(
+            f"ВладелецФайла_Key eq guid'{k}'" for k in chunk
+        )
+        params = {
+            '$filter': (
+                f'({flt}) and DeletionMark eq false'
+            ),
+            '$select': (
+                'Ref_Key,ВладелецФайла_Key,Расширение,'
+                'Description'
+            ),
+            '$orderby': 'ВладелецФайла_Key,Description',
+            '$format': 'json',
+        }
+        try:
+            data = client.get(
+                'Catalog_НоменклатураПрисоединенныеФайлы',
+                params,
+            )
+        except ODataNotFoundError:
+            continue
+        for row in data.get('value', []):
+            owner = row.get('ВладелецФайла_Key') or ''
+            if not owner or owner in result:
+                continue
+            ext = (
+                row.get('Расширение') or ''
+            ).lower().lstrip('.')
+            if ext and ext not in _PHOTO_EXTS:
+                continue
+            result[owner] = row['Ref_Key']
     return result
 
 
@@ -711,11 +1033,12 @@ def get_all_products(
     only_active: bool = True,
     prefix: str = '',
 ) -> list[dict]:
-    """Возвращает список товаров с базовыми данными.
+    """Список товаров с базовыми данными.
 
-    Не подтягивает характеристики и штрихкоды — для деталей
-    вызывать get_product(article). Фото отдаётся ключом
-    ФайлКартинки_Key, содержимое — через get_photo_bytes.
+    Батчами обогащается: название категории и группы, цвет из
+    ТЧ ДополнительныеРеквизиты, фолбэк фото на первый файл, если
+    основной ФайлКартинки_Key пуст. Характеристики и штрихкоды
+    не тянет — для деталей вызывать get_product(article).
     """
     conds = ['IsFolder eq false']
     if only_active:
@@ -740,23 +1063,71 @@ def get_all_products(
     result = client.get('Catalog_Номенклатура', params)
     rows = result.get('value', [])
     nom_keys = [r['Ref_Key'] for r in rows]
-    prices = _load_prices_by_keys(client, nom_keys)
+
+    cat_keys = [
+        r.get('КатегорияНоменклатуры_Key') or '' for r in rows
+    ]
+    grp_keys = [r.get('Parent_Key') or '' for r in rows]
+
+    nom_articles = {
+        r['Ref_Key']: (r.get('Артикул') or '')
+        for r in rows
+    }
+
+    prices, price_chars = _load_prices_and_chars(
+        client, nom_keys,
+    )
+    categories = _batch_names(
+        client, 'Catalog_КатегорииНоменклатуры', cat_keys,
+    )
+    groups = _batch_names(
+        client, 'Catalog_Номенклатура', grp_keys,
+    )
+    colors = _batch_colors(client, nom_keys)
+    sizes = _batch_sizes(
+        client, nom_articles, seed_chars=price_chars,
+    )
+
+    need_photo = [
+        r['Ref_Key'] for r in rows
+        if not (r.get('ФайлКартинки_Key') or '').strip()
+        or (r.get('ФайлКартинки_Key') or '') == EMPTY_GUID
+    ]
+    fallback_photos = _batch_first_photos(
+        client, need_photo,
+    )
 
     out: list[dict] = []
     for r in rows:
         key = r['Ref_Key']
         photo_key = r.get('ФайлКартинки_Key') or ''
-        if photo_key == EMPTY_GUID:
-            photo_key = ''
+        if not photo_key or photo_key == EMPTY_GUID:
+            photo_key = fallback_photos.get(key, '')
+        short = r.get('Description') or ''
+        full = r.get('НаименованиеПолное') or ''
+        article = r.get('Артикул') or ''
+        name = short or full or article
+        cat_key = r.get('КатегорияНоменклатуры_Key') or ''
+        grp_key = r.get('Parent_Key') or ''
         out.append({
             'ref_key': key,
-            'article': r.get('Артикул') or '',
-            'name': r.get('Description') or '',
-            'full_name': r.get('НаименованиеПолное') or '',
-            'group_key': r.get('Parent_Key') or '',
-            'category_key': (
-                r.get('КатегорияНоменклатуры_Key') or ''
+            'article': article,
+            'name': name,
+            'full_name': full,
+            'group_key': grp_key,
+            'group_name': (
+                groups.get(grp_key, '')
+                if grp_key and grp_key != EMPTY_GUID
+                else ''
             ),
+            'category_key': cat_key,
+            'category_name': (
+                categories.get(cat_key, '')
+                if cat_key and cat_key != EMPTY_GUID
+                else ''
+            ),
+            'color': colors.get(key, ''),
+            'sizes': sizes.get(key, []),
             'photo_key': photo_key,
             'price': prices.get(key, 0.0),
             'deletion_mark': bool(r.get('DeletionMark')),

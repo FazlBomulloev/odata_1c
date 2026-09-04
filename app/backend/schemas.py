@@ -93,13 +93,25 @@ class ProductUpdate(BaseModel):
     sizes: list[SizeIn] = Field(default_factory=list)
 
 
+class ProductSizeShort(BaseModel):
+    global_size: str = Field(alias='global')
+    ru_size: str = Field(alias='ru')
+
+    class Config:
+        populate_by_name = True
+
+
 class ProductListItem(BaseModel):
     ref_key: str
     article: str
     name: str
     full_name: str
     group_key: str
+    group_name: str = ''
     category_key: str
+    category_name: str = ''
+    color: str = ''
+    sizes: list[ProductSizeShort] = Field(default_factory=list)
     photo_key: str
     price: float
     deletion_mark: bool

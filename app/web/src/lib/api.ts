@@ -48,13 +48,22 @@ export type SyncStatusResponse = {
   runs: SyncRunStatus[];
 };
 
+export type ProductSizeShort = {
+  global: string;
+  ru: string;
+};
+
 export type ProductListItem = {
   ref_key: string;
   article: string;
   name: string;
   full_name: string;
   group_key: string;
+  group_name: string;
   category_key: string;
+  category_name: string;
+  color: string;
+  sizes: ProductSizeShort[];
   photo_key: string;
   price: number;
   deletion_mark: boolean;

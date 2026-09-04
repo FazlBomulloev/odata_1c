@@ -296,10 +296,56 @@ function ProductCard({
         <div
           className="text-13 text-text font-medium mt-0.5
           line-clamp-2"
-          title={row.name}
+          title={row.full_name || row.name}
         >
           {row.name || '—'}
         </div>
+        {(row.category_name || row.color) && (
+          <div
+            className="mt-1 flex flex-wrap gap-1 text-10
+            text-text-3"
+          >
+            {row.category_name && (
+              <span
+                className="px-1.5 py-0.5 rounded bg-surface-2
+                border border-border"
+              >
+                {row.category_name}
+              </span>
+            )}
+            {row.color && (
+              <span
+                className="px-1.5 py-0.5 rounded bg-surface-2
+                border border-border"
+              >
+                {row.color}
+              </span>
+            )}
+          </div>
+        )}
+        {row.sizes && row.sizes.length > 0 && (
+          <div
+            className="mt-1.5 flex flex-wrap gap-1"
+            title={`${row.sizes.length} размер(ов)`}
+          >
+            {row.sizes.slice(0, 8).map((s, i) => (
+              <span
+                key={`${s.global}-${s.ru}-${i}`}
+                className="text-10 font-mono px-1.5 py-0.5
+                rounded bg-accent-tint text-text tabular"
+              >
+                {s.ru || s.global}
+              </span>
+            ))}
+            {row.sizes.length > 8 && (
+              <span
+                className="text-10 text-text-3 px-1.5 py-0.5"
+              >
+                +{row.sizes.length - 8}
+              </span>
+            )}
+          </div>
+        )}
         <div className="mt-auto pt-2 flex items-center justify-between">
           <div className="text-13 font-mono tabular text-text">
             {row.price
