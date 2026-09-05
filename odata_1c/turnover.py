@@ -14,6 +14,7 @@ from .movements import (
     WAREHOUSES_CATALOG,
     _batch_get_by_keys,
     _iso,
+    _iso_to,
     _parse_size,
     _resolve_names,
 )
@@ -23,18 +24,15 @@ logger = logging.getLogger(__name__)
 SALES_REGISTER = 'AccumulationRegister_Продажи'
 CONTRACTORS_CATALOG = 'Catalog_Контрагенты'
 
-
 def _turnovers_endpoint(date_from, date_to) -> str:
-    # Период — параметрами виртуальной таблицы в скобках;
-    # $filter по Period здесь отдаёт 500.
+
     d_from = _iso(date_from)
-    d_to = _iso(date_to)
+    d_to = _iso_to(date_to)
     return (
         f"{SALES_REGISTER}/Turnovers("
         f"StartPeriod=datetime'{d_from}',"
         f"EndPeriod=datetime'{d_to}')"
     )
-
 
 def _fetch_turnover_rows(
     client: OData1C,
@@ -47,17 +45,34 @@ def _fetch_turnover_rows(
 
     rows: list[dict] = []
     skip = 0
+
+    order = (
+        'Номенклатура_Key,Характеристика_Key,'
+        'Склад_Key,Организация_Key,Контрагент_Key'
+    )
+    fallback_no_order = False
     while True:
         params = {
             '$top': str(PAGE_SIZE),
             '$skip': str(skip),
             '$format': 'json',
         }
+        if not fallback_no_order:
+            params['$orderby'] = order
         try:
             data = client.get(endpoint, params)
         except ODataNotFoundError:
             logger.warning('%s недоступен', endpoint)
             return []
+        except ODataError as exc:
+            if not fallback_no_order:
+                logger.warning(
+                    '$orderby на Turnovers не принят (%s), '
+                    'повторяю без сортировки', exc,
+                )
+                fallback_no_order = True
+                continue
+            raise
         page = data.get('value', [])
         rows.extend(page)
         if len(page) < PAGE_SIZE:
@@ -69,8 +84,9 @@ def _fetch_turnover_rows(
     )
     return rows
 
-
-def _collect_refs(rows: list[dict]) -> tuple[set, set, set, set]:
+def _collect_refs(
+    rows: list[dict],
+) -> tuple[set, set, set, set, set]:
     noms, chars, orgs, whs, contractors = (
         set(), set(), set(), set(), set(),
     )
@@ -86,7 +102,6 @@ def _collect_refs(rows: list[dict]) -> tuple[set, set, set, set]:
             if v and v != EMPTY_GUID:
                 dst.add(v)
     return noms, chars, orgs, whs, contractors
-
 
 def _to_record(
     r: dict,
@@ -141,7 +156,6 @@ def _to_record(
             r.get('СебестоимостьБезНДСTurnover') or 0
         ),
     )
-
 
 def get_sales_turnover(
     client: OData1C,

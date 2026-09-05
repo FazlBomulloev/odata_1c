@@ -3,6 +3,7 @@ import logging
 from .client import OData1C
 from .exceptions import ODataError
 from .models import StockRecord
+from .search import _esc
 from .movements import (
     CHARACTERISTICS,
     EMPTY_GUID,
@@ -20,17 +21,10 @@ logger = logging.getLogger(__name__)
 
 STOCK = 'AccumulationRegister_ЗапасыНаСкладах/Balance'
 
-# В этой базе у регистра ЗапасыНаСкладах два ресурса количества.
-# По одной строке (склад + характеристика) остаток лежит либо в
-# одном, либо в другом — на разных складах по-разному. Для ответа
-# «где сейчас лежит товар» их надо суммировать, иначе часть
-# остатков потеряется.
 QTY_FIELDS = ('КоличествоBalance', 'КоличествоИнтBalance')
-
 
 def _row_qty(row) -> float:
     return sum(float(row.get(f, 0) or 0) for f in QTY_FIELDS)
-
 
 def _build_filter(
     warehouse: str,
@@ -58,7 +52,6 @@ def _build_filter(
         conds.append(f'({or_expr})')
     return ' and '.join(conds)
 
-
 def _fetch_balance(
     client: OData1C,
     warehouse: str = '',
@@ -66,8 +59,8 @@ def _fetch_balance(
     nomenclature: str = '',
     only_positive: bool = True,
     use_server_filter: bool = True,
+    stable_order: bool = True,
 ) -> list[dict]:
-    """Тянет строки виртуальной таблицы остатков с пагинацией."""
     flt = ''
     if use_server_filter:
         flt = _build_filter(
@@ -77,6 +70,11 @@ def _fetch_balance(
 
     rows: list[dict] = []
     skip = 0
+
+    order = (
+        'Организация_Key,СтруктурнаяЕдиница_Key,'
+        'Номенклатура_Key,Характеристика_Key'
+    )
     while True:
         params = {
             '$top': str(PAGE_SIZE),
@@ -85,6 +83,8 @@ def _fetch_balance(
         }
         if flt:
             params['$filter'] = flt
+        if stable_order:
+            params['$orderby'] = order
         data = client.get(STOCK, params)
         page = data.get('value', [])
         rows.extend(page)
@@ -92,7 +92,6 @@ def _fetch_balance(
             break
         skip += PAGE_SIZE
     return rows
-
 
 def _python_filter(
     rows,
@@ -119,7 +118,6 @@ def _python_filter(
         return True
     return [r for r in rows if ok(r)]
 
-
 def _fetch_rows(
     client: OData1C,
     warehouse: str,
@@ -127,29 +125,42 @@ def _fetch_rows(
     nomenclature: str,
     only_positive: bool,
 ) -> list[dict]:
-    """Выборка остатков; фолбэк на Python-фильтр при сбое $filter."""
     try:
         return _fetch_balance(
             client, warehouse, organization,
             nomenclature, only_positive,
             use_server_filter=True,
+            stable_order=True,
         )
     except ODataError as exc:
-        if not (warehouse or organization
-                or nomenclature or only_positive):
-            raise
         logger.warning(
-            'Серверный $filter не сработал (%s), '
-            'фильтрую в Python', exc,
+            'Первичный запрос остатков не прошёл (%s), '
+            'пробую без $orderby', exc,
         )
-        rows = _fetch_balance(
-            client, use_server_filter=False,
-        )
-        return _python_filter(
-            rows, warehouse, organization,
-            nomenclature, only_positive,
-        )
-
+        try:
+            return _fetch_balance(
+                client, warehouse, organization,
+                nomenclature, only_positive,
+                use_server_filter=True,
+                stable_order=False,
+            )
+        except ODataError as exc2:
+            if not (warehouse or organization
+                    or nomenclature or only_positive):
+                raise
+            logger.warning(
+                'Серверный $filter тоже не сработал (%s), '
+                'фильтрую в Python', exc2,
+            )
+            rows = _fetch_balance(
+                client,
+                use_server_filter=False,
+                stable_order=False,
+            )
+            return _python_filter(
+                rows, warehouse, organization,
+                nomenclature, only_positive,
+            )
 
 def _collect_catalogs(client: OData1C, rows) -> dict:
     nom_keys = {r.get('Номенклатура_Key', '') for r in rows}
@@ -174,7 +185,6 @@ def _collect_catalogs(client: OData1C, rows) -> dict:
             client, wh_keys, WAREHOUSES_CATALOG,
         ),
     }
-
 
 def _build_stock_record(row, catalogs) -> StockRecord:
     nom_key = row.get('Номенклатура_Key', '')
@@ -217,7 +227,6 @@ def _build_stock_record(row, catalogs) -> StockRecord:
         quantity=_row_qty(row),
     )
 
-
 def get_stock(
     client: OData1C,
     warehouse: str = '',
@@ -225,7 +234,6 @@ def get_stock(
     nomenclature: str = '',
     only_positive: bool = True,
 ) -> list[StockRecord]:
-    """Текущие остатки товара по складам."""
     rows = _fetch_rows(
         client, warehouse, organization,
         nomenclature, only_positive,
@@ -242,25 +250,19 @@ def get_stock(
     catalogs = _collect_catalogs(client, rows)
     result = [_build_stock_record(r, catalogs) for r in rows]
 
-    # Серверный $filter — грубый пре-фильтр по любой из компонент
-    # количества. Финальный «остаток > 0» проверяем уже по сумме,
-    # иначе пропускали бы строки, где одна компонента > 0, а вторая
-    # ушла в минус и суммарный остаток нулевой.
     if only_positive:
         result = [r for r in result if r.quantity > 0]
     return result
-
 
 def get_stock_by_article(
     client: OData1C,
     article: str,
 ) -> list[StockRecord]:
-    """Остатки по всем складам для одного артикула."""
     if not article:
         return []
     try:
         data = client.get(NOMENCLATURE, {
-            '$filter': f"Артикул eq '{article}'",
+            '$filter': f"Артикул eq '{_esc(article)}'",
             '$select': 'Ref_Key',
             '$format': 'json',
         })

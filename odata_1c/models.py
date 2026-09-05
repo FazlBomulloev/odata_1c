@@ -1,10 +1,8 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 
-
 @dataclass
 class MovementRecord:
-    """Одна нормализованная запись товародвижения."""
     period: datetime | None
     name: str
     article: str
@@ -23,10 +21,8 @@ class MovementRecord:
     document_date: datetime | None
     recorder: str
 
-
 @dataclass
 class StockRecord:
-    """Текущий остаток товара по складу."""
     name: str
     article: str
     barcode: str
@@ -37,15 +33,8 @@ class StockRecord:
     organization: str
     quantity: float
 
-
 @dataclass
 class TurnoverRecord:
-    """Одна строка регистра Продажи/Turnovers за период.
-
-    Гранулярность — (номенклатура, характеристика, склад,
-    организация, контрагент, месяц). Все суммы — с НДС в
-    основных полях; поля *_no_vat — без НДС.
-    """
     article: str
     name: str
     size: str
@@ -64,10 +53,8 @@ class TurnoverRecord:
     cost: float
     cost_no_vat: float
 
-
 @dataclass
 class SaleRecord:
-    """Одна строка продажи (или возврата) по каналу."""
     nomenclature_key: str
     characteristic_key: str | None
     article: str | None
@@ -80,18 +67,14 @@ class SaleRecord:
     warehouse: str | None = None
     organization: str | None = None
 
-
 @dataclass
 class SizeData:
-    """Один размер: глобальный, российский, штрихкод."""
     global_size: str
     ru_size: str
     barcode: str
 
-
 @dataclass
 class ProductData:
-    """Товар для создания/обновления в 1С."""
     article: str
     name: str
     description: str
@@ -104,7 +87,6 @@ class ProductData:
 
     @classmethod
     def from_json(cls, data: dict) -> 'ProductData':
-        """Создаёт ProductData из dict сервиса."""
         sizes = [
             SizeData(
                 global_size=s['global'],

@@ -23,11 +23,13 @@ from odata_1c.movements import (
     WAREHOUSES_CATALOG,
     WRITE_OFF_KINDS,
     _iso,
+    _iso_to,
     _pair_transfers,
     _parse_dt,
     _parse_size,
     _short_kind,
 )
+from odata_1c.search import _esc
 from odata_1c.sales import (
     CHANNEL_RETAIL,
     CHANNEL_UNKNOWN,
@@ -47,11 +49,9 @@ from .odata_async import AsyncOData1C
 
 logger = logging.getLogger(__name__)
 
-
 def _chunks(seq, n):
     for i in range(0, len(seq), n):
         yield seq[i:i + n]
-
 
 async def _paginate(
     client: AsyncOData1C,
@@ -76,7 +76,6 @@ async def _paginate(
             break
         skip += PAGE_SIZE
     return rows
-
 
 async def _batch_by_keys(
     client: AsyncOData1C,
@@ -107,7 +106,6 @@ async def _batch_by_keys(
     parts = await asyncio.gather(*tasks)
     return [item for part in parts for item in part]
 
-
 async def _resolve_by_keys(
     client: AsyncOData1C,
     endpoint: str,
@@ -119,7 +117,6 @@ async def _resolve_by_keys(
         client, endpoint, keys, select, key_field,
     )
     return {r[key_field]: r for r in rows if key_field in r}
-
 
 async def _resolve_barcodes(
     client: AsyncOData1C, nom_keys,
@@ -141,7 +138,6 @@ async def _resolve_barcodes(
         if key not in result:
             result[key] = item.get('Штрихкод', '')
     return result
-
 
 async def _resolve_documents(
     client: AsyncOData1C, recorders,
@@ -170,7 +166,6 @@ async def _resolve_documents(
             docs[item['Ref_Key']] = item
     return docs
 
-
 async def _resolve_names(
     client: AsyncOData1C, keys, endpoint: str,
 ) -> dict:
@@ -182,7 +177,6 @@ async def _resolve_names(
         k: v.get('Description', '') or ''
         for k, v in got.items()
     }
-
 
 def _size_from(
     char_key: str,
@@ -197,9 +191,7 @@ def _size_from(
     _, _, size = _parse_size(descr, article or '')
     return size or None
 
-
 SALES_RECORDS = 'AccumulationRegister_Продажи_RecordType'
-
 
 async def _fetch_recorder_dims(
     client: AsyncOData1C,
@@ -207,20 +199,11 @@ async def _fetch_recorder_dims(
     date_to: datetime,
     recorder_type: str,
 ) -> dict:
-    """{Recorder_Key: (Склад_Key, Организация_Key)} из проводок
-    регистра Продажи, отфильтрованных по типу документа.
-
-    Turnovers группирует по Документ (это документ-инициатор
-    списания — обычно РасходнаяНакладная), поэтому Ref_Key
-    ОтчётаКомиссионера там не находится. Сырая таблица _RecordType
-    хранит Recorder = Ref_Key исходного документа проведения —
-    для комиссионера это как раз он.
-    """
     if date_from < MIN_PERIOD:
         date_from = MIN_PERIOD
     flt = (
         f"Period ge datetime'{_iso(date_from)}' and "
-        f"Period le datetime'{_iso(date_to)}' and "
+        f"Period le datetime'{_iso_to(date_to)}' and "
         f"Recorder_Type eq 'StandardODATA.{recorder_type}'"
     )
     rows = await _paginate(
@@ -228,6 +211,7 @@ async def _fetch_recorder_dims(
         {
             '$filter': flt,
             '$select': 'Recorder,Склад_Key,Организация_Key',
+            '$orderby': 'Period,Recorder,LineNumber',
         },
     )
     result: dict = {}
@@ -244,7 +228,6 @@ async def _fetch_recorder_dims(
         )
     return result
 
-
 async def fetch_marketplace_sales(
     client: AsyncOData1C,
     date_from: datetime,
@@ -255,14 +238,14 @@ async def fetch_marketplace_sales(
         date_from = MIN_PERIOD
     flt = (
         f"Date ge datetime'{_iso(date_from)}' and "
-        f"Date le datetime'{_iso(date_to)}'"
+        f"Date le datetime'{_iso_to(date_to)}'"
     )
     headers = await _paginate(
         client, DOC_COMMISSION,
         {
             '$filter': flt,
             '$select': 'Ref_Key,Date,Договор_Key,Организация_Key',
-            '$orderby': 'Date',
+            '$orderby': 'Date,Ref_Key',
         },
     )
     if not headers:
@@ -394,7 +377,6 @@ async def fetch_marketplace_sales(
             })
     return out
 
-
 async def fetch_retail_sales(
     client: AsyncOData1C,
     date_from: datetime,
@@ -404,7 +386,7 @@ async def fetch_retail_sales(
         date_from = MIN_PERIOD
     flt = (
         f"Date ge datetime'{_iso(date_from)}' and "
-        f"Date le datetime'{_iso(date_to)}'"
+        f"Date le datetime'{_iso_to(date_to)}'"
     )
     headers = await _paginate(
         client, DOC_RETAIL,
@@ -414,7 +396,7 @@ async def fetch_retail_sales(
                 'Ref_Key,Date,Организация_Key,'
                 'СтруктурнаяЕдиница_Key'
             ),
-            '$orderby': 'Date',
+            '$orderby': 'Date,Ref_Key',
         },
     )
     if not headers:
@@ -501,7 +483,6 @@ async def fetch_retail_sales(
         })
     return out
 
-
 async def fetch_all_sales(
     client: AsyncOData1C,
     date_from: datetime,
@@ -513,10 +494,8 @@ async def fetch_all_sales(
     )
     return list(mp) + list(rt)
 
-
 def _op_type(kind: str, rtype: str) -> str:
     return DOCUMENT_OPERATION.get(kind, kind or rtype)
-
 
 async def _fetch_register(
     client: AsyncOData1C,
@@ -526,9 +505,11 @@ async def _fetch_register(
 ) -> list[dict]:
     if date_from < MIN_PERIOD:
         date_from = MIN_PERIOD
+    d_from = _iso(date_from)
+    d_to = _iso_to(date_to)
     conds = [
-        f"Period ge datetime'{_iso(date_from)}'",
-        f"Period le datetime'{_iso(date_to)}'",
+        f"Period ge datetime'{d_from}'",
+        f"Period le datetime'{d_to}'",
     ]
     if recorder_kinds:
         kind_expr = ' or '.join(
@@ -538,10 +519,11 @@ async def _fetch_register(
         )
         conds.append(f'({kind_expr})')
     flt = ' and '.join(conds)
+    order = 'Period,Recorder,LineNumber,RecordType'
     try:
         return await _paginate(
             client, REGISTER,
-            {'$filter': flt, '$orderby': 'Period'},
+            {'$filter': flt, '$orderby': order},
         )
     except ConnectionError:
         if not recorder_kinds:
@@ -550,12 +532,12 @@ async def _fetch_register(
             'Фильтр Recorder_Type не сработал, беру всё',
         )
         base_flt = (
-            f"Period ge datetime'{_iso(date_from)}' and "
-            f"Period le datetime'{_iso(date_to)}'"
+            f"Period ge datetime'{d_from}' and "
+            f"Period le datetime'{d_to}'"
         )
         rows = await _paginate(
             client, REGISTER,
-            {'$filter': base_flt, '$orderby': 'Period'},
+            {'$filter': base_flt, '$orderby': order},
         )
         allowed = {
             f'{RECORDER_TYPE_PREFIX}{k}' for k in recorder_kinds
@@ -564,7 +546,6 @@ async def _fetch_register(
             r for r in rows
             if r.get('Recorder_Type') in allowed
         ]
-
 
 async def _collect_movement_catalogs(
     client: AsyncOData1C, rows,
@@ -608,7 +589,6 @@ async def _collect_movement_catalogs(
         'organizations': organizations,
         'warehouses': warehouses,
     }
-
 
 def _movement_record(
     period,
@@ -677,7 +657,6 @@ def _movement_record(
         'recorder': recorder,
     }
 
-
 def _prefilter(rows, organization: str, warehouse: str):
     paired_rtypes = {
         f'{RECORDER_TYPE_PREFIX}{k}' for k in PAIRED_KINDS
@@ -707,7 +686,6 @@ def _prefilter(rows, organization: str, warehouse: str):
         return row_hit(r)
 
     return [r for r in rows if keep(r)]
-
 
 def _normalize_movements(rows, catalogs, organization, warehouse):
     docs = catalogs['documents']
@@ -803,7 +781,6 @@ def _normalize_movements(rows, catalogs, organization, warehouse):
         ))
     return result
 
-
 async def fetch_movements(
     client: AsyncOData1C,
     date_from: datetime,
@@ -828,7 +805,6 @@ async def fetch_movements(
         warehouse=warehouse or '',
     )
 
-
 MOVEMENT_KIND_MAP = {
     'transfers': TRANSFER_KINDS,
     'write_offs': WRITE_OFF_KINDS,
@@ -836,7 +812,6 @@ MOVEMENT_KIND_MAP = {
     'expenses': EXPENSE_KINDS,
     'all': None,
 }
-
 
 async def fetch_stock(
     client: AsyncOData1C,
@@ -867,6 +842,10 @@ async def fetch_stock(
     if conds:
         params['$filter'] = ' and '.join(conds)
 
+    params['$orderby'] = (
+        'Организация_Key,СтруктурнаяЕдиница_Key,'
+        'Номенклатура_Key,Характеристика_Key'
+    )
     rows = await _paginate(client, STOCK, params)
     if not rows:
         return []
@@ -940,7 +919,6 @@ async def fetch_stock(
         })
     return result
 
-
 async def fetch_stock_by_article(
     client: AsyncOData1C,
     article: str,
@@ -949,7 +927,7 @@ async def fetch_stock_by_article(
         return []
     try:
         data = await client.get(NOMENCLATURE, {
-            '$filter': f"Артикул eq '{article}'",
+            '$filter': f"Артикул eq '{_esc(article)}'",
             '$select': 'Ref_Key',
             '$format': 'json',
         })
@@ -965,14 +943,12 @@ async def fetch_stock_by_article(
     parts = await asyncio.gather(*tasks)
     return [row for part in parts for row in part]
 
-
 async def fetch_catalog_names(
     client: AsyncOData1C, endpoint: str,
 ) -> list[dict]:
-    """Список {ref, name} для селекторов на фронте."""
     rows = await _paginate(
         client, endpoint,
-        {'$select': 'Ref_Key,Description', '$orderby': 'Description'},
+        {'$select': 'Ref_Key,Description', '$orderby': 'Description,Ref_Key'},
     )
     return [
         {'ref': r['Ref_Key'], 'name': r.get('Description', '') or ''}

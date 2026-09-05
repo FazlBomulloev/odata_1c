@@ -22,17 +22,9 @@ from .search import (
     get_nomenclature_by_article,
 )
 
-
 def _parse_size_lenient(
     description: str, article: str = '',
 ) -> tuple[str, str]:
-    """Толерантный разбор Description характеристики.
-
-    Понимает форматы, встречающиеся в разных базах 1С:
-    '{арт}-{global}, {ru}', '{global}, {ru}', 'L, 50',
-    просто 'L' (только глобальный), просто '42' (только ru).
-    Возвращает (global, ru).
-    """
     if not description:
         return ('', '')
     body = description.strip()
@@ -51,24 +43,19 @@ logger = logging.getLogger(__name__)
 
 EMPTY_GUID = '00000000-0000-0000-0000-000000000000'
 _PHOTO_TIMEOUT = 30
+_PHOTO_MAX_BYTES = 15 * 1024 * 1024
 _PAGE_SIZE = 1000
 
-
 def _esc(value: str) -> str:
-    """Экранирует одинарную кавычку для OData $filter."""
     return value.replace("'", "''")
 
-
 def _format_char_name(article: str, size: SizeData) -> str:
-    """Формат: '18057-2XL, 54'."""
     return f'{article}-{size.global_size}, {size.ru_size}'
-
 
 def _find_color_guid(
     client: OData1C,
     color_name: str,
 ) -> str:
-    """Ищет GUID цвета по названию (регистронезависимо)."""
     if not color_name:
         return ''
 
@@ -104,12 +91,10 @@ def _find_color_guid(
     logger.warning('Цвет "%s" не найден', color_name)
     return ''
 
-
 def _find_group_key(
     client: OData1C,
     group_name: str,
 ) -> str:
-    """Ищет группу номенклатуры по названию через $filter."""
     if not group_name:
         return ''
 
@@ -128,12 +113,10 @@ def _find_group_key(
     logger.warning('Группа "%s" не найдена', group_name)
     return ''
 
-
 def _find_or_create_category(
     client: OData1C,
     category_name: str,
 ) -> str:
-    """Ищет категорию, создаёт если нет."""
     if not category_name:
         return ''
 
@@ -158,7 +141,6 @@ def _find_or_create_category(
     )
     return created['Ref_Key']
 
-
 def _create_nomenclature(
     client: OData1C,
     data: ProductData,
@@ -166,7 +148,6 @@ def _create_nomenclature(
     group_key: str,
     color_guid: str,
 ) -> dict:
-    """Создаёт запись номенклатуры."""
     payload = {
         'Description': data.name,
         'НаименованиеПолное': data.name,
@@ -197,14 +178,12 @@ def _create_nomenclature(
     )
     return client.post('Catalog_Номенклатура', payload)
 
-
 def _create_characteristic(
     client: OData1C,
     owner_key: str,
     article: str,
     size: SizeData,
 ) -> dict:
-    """Создаёт характеристику номенклатуры."""
     char_name = _format_char_name(article, size)
     payload = {
         'Owner': owner_key,
@@ -219,14 +198,12 @@ def _create_characteristic(
         'Catalog_ХарактеристикиНоменклатуры', payload,
     )
 
-
 def _create_barcode(
     client: OData1C,
     nom_key: str,
     char_key: str,
     barcode: str,
 ) -> dict:
-    """Записывает штрихкод."""
     payload = {
         'Штрихкод': barcode,
         'Номенклатура_Key': nom_key,
@@ -240,11 +217,9 @@ def _create_barcode(
         payload,
     )
 
-
 def _resolve_price_keys(
     price_type_keys: list[str] | None,
 ) -> list[str]:
-    """Возвращает список GUID видов цен для записи."""
     if price_type_keys:
         return [k for k in price_type_keys if k]
     if ODATA_PRICE_TYPE_GUIDS:
@@ -256,7 +231,6 @@ def _resolve_price_keys(
         '(ODATA_PRICE_TYPE_GUIDS в .env)'
     )
 
-
 def _set_price_one(
     client: OData1C,
     nom_key: str,
@@ -264,7 +238,6 @@ def _set_price_one(
     price: float,
     price_type_key: str,
 ) -> dict:
-    """Пишет одну запись в регистр цен."""
     now = datetime.now(timezone.utc).strftime(
         '%Y-%m-%dT%H:%M:%S',
     )
@@ -280,7 +253,6 @@ def _set_price_one(
         'InformationRegister_ЦеныНоменклатуры', payload,
     )
 
-
 def _set_price(
     client: OData1C,
     nom_key: str,
@@ -288,7 +260,6 @@ def _set_price(
     price: float,
     price_type_keys: list[str] | None = None,
 ) -> list[dict]:
-    """Записывает цену во все переданные виды цен."""
     keys = _resolve_price_keys(price_type_keys)
     logger.info(
         'Устанавливаю цену %.2f в %d вид(ов) цен',
@@ -299,9 +270,7 @@ def _set_price(
         for k in keys
     ]
 
-
 def _detect_ext(url: str) -> str:
-    """Определяет расширение файла по URL."""
     lower = url.lower().split('?', 1)[0]
     if lower.endswith('.png'):
         return 'png'
@@ -311,18 +280,12 @@ def _detect_ext(url: str) -> str:
         return 'jpeg'
     return 'jpg'
 
-
 def _upload_photo(
     client: OData1C,
     nom_key: str,
     photo_url: str,
     index: int = 0,
 ) -> dict:
-    """Загружает фото в 1С через 3 объекта.
-
-    photo_url может быть либо HTTP(S)-ссылкой, либо data-URL
-    вида data:image/jpeg;base64,<b64>.
-    """
     logger.info(
         'Загружаю фото %s',
         photo_url[:80] + ('…' if len(photo_url) > 80 else ''),
@@ -335,6 +298,12 @@ def _upload_photo(
         except (ValueError, TypeError, IndexError) as exc:
             logger.warning('Битый data-URL: %s', exc)
             return {}
+        if len(photo_bytes) > _PHOTO_MAX_BYTES:
+            logger.warning(
+                'Фото data-URL %d байт превышает лимит %d',
+                len(photo_bytes), _PHOTO_MAX_BYTES,
+            )
+            return {}
         mime_ext = {
             'image/jpeg': 'jpg', 'image/jpg': 'jpg',
             'image/png': 'png', 'image/webp': 'webp',
@@ -344,15 +313,31 @@ def _upload_photo(
     else:
         try:
             resp = requests.get(
-                photo_url, timeout=_PHOTO_TIMEOUT,
+                photo_url,
+                timeout=_PHOTO_TIMEOUT,
+                stream=True,
             )
             resp.raise_for_status()
+
+            buf = bytearray()
+            for chunk in resp.iter_content(chunk_size=65536):
+                if not chunk:
+                    continue
+                buf.extend(chunk)
+                if len(buf) > _PHOTO_MAX_BYTES:
+                    resp.close()
+                    logger.warning(
+                        'Фото %s превышает лимит %d байт, '
+                        'пропускаю', photo_url[:80],
+                        _PHOTO_MAX_BYTES,
+                    )
+                    return {}
+            photo_bytes = bytes(buf)
         except requests.RequestException as exc:
             logger.warning(
                 'Не удалось скачать фото: %s', exc,
             )
             return {}
-        photo_bytes = resp.content
         ext = _detect_ext(photo_url)
 
     photo_b64 = base64.b64encode(photo_bytes).decode()
@@ -416,13 +401,11 @@ def _upload_photo(
     )
     return file_result
 
-
 def create_product(
     client: OData1C,
     data: ProductData,
     price_type_keys: list[str] | None = None,
 ) -> dict:
-    """Полный цикл создания товара в 1С."""
     if not data.article:
         raise ODataValidationError(
             'Артикул не может быть пустым'
@@ -495,12 +478,10 @@ def create_product(
         'photos': photos,
     }
 
-
 def get_product(
     client: OData1C,
     article: str,
 ) -> dict:
-    """Собирает полный слепок товара по артикулу."""
     nom = get_nomenclature_by_article(client, article)
     nom_key = nom['Ref_Key']
 
@@ -551,19 +532,12 @@ def get_product(
         'photos': photos,
     }
 
-
 def update_product(
     client: OData1C,
     article: str,
     update_data: dict,
     price_type_keys: list[str] | None = None,
 ) -> dict:
-    """Обновляет товар по артикулу.
-
-    Принимает поля: name, description, price, category, group,
-    sizes (новые), photos (новые URL/data-URL). Цвет менять
-    через update пока нельзя — только при создании.
-    """
     nom = get_nomenclature_by_article(client, article)
     nom_key = nom['Ref_Key']
 
@@ -675,12 +649,10 @@ def update_product(
 
     return get_product(client, article)
 
-
 def delete_product(
     client: OData1C,
     article: str,
 ) -> bool:
-    """Помечает товар на удаление (soft delete)."""
     nom = get_nomenclature_by_article(client, article)
     nom_key = nom['Ref_Key']
     endpoint = (
@@ -692,12 +664,10 @@ def delete_product(
     )
     return True
 
-
 def list_product_photos(
     client: OData1C,
     nom_key: str,
 ) -> list[dict]:
-    """Возвращает присоединённые файлы товара."""
     params = {
         '$filter': (
             f"ВладелецФайла_Key eq guid'{nom_key}' and "
@@ -717,12 +687,10 @@ def list_product_photos(
         return []
     return result.get('value', [])
 
-
 def get_photo_bytes(
     client: OData1C,
     file_key: str,
 ) -> tuple[bytes, str]:
-    """Возвращает (содержимое, расширение) фото по file_key."""
     file_endpoint = (
         'Catalog_НоменклатураПрисоединенныеФайлы'
         f"(guid'{file_key}')"
@@ -761,28 +729,17 @@ def get_photo_bytes(
     payload = bd.get('ДвоичныеДанные_Base64Data') or ''
     return base64.b64decode(payload), ext
 
-
 def _load_prices_and_chars(
     client: OData1C,
     nom_keys: list[str],
 ) -> tuple[dict[str, float], dict[str, list[str]]]:
-    """Одним проходом: цены и Характеристика_Key per nom_key.
-
-    Возвращает ({nom_key: цена}, {nom_key: [char_key, ...]}).
-    Приоритет цены: сначала актуальная строка с ВидЦен_Key из
-    ODATA_PRICE_TYPE_GUIDS (если задан), при её отсутствии —
-    любая актуальная, при её отсутствии — любая. Внутри
-    приоритета побеждает latest по Period.
-    """
     prices: dict[str, float] = {}
     chars_map: dict[str, list[str]] = {}
     seen_chars: dict[str, set[str]] = {}
     if not nom_keys:
         return prices, chars_map
     preferred = set(ODATA_PRICE_TYPE_GUIDS)
-    # {nom_key: (priority, period, price)}
-    # priority: 2 — preferred+актуальная, 1 — актуальная,
-    # 0 — любая
+
     best: dict[str, tuple[int, str, float]] = {}
     batch = 40
     unique = [k for k in set(nom_keys) if k]
@@ -837,16 +794,13 @@ def _load_prices_and_chars(
         prices[nk] = price
     return prices, chars_map
 
-
 _PHOTO_EXTS = {'jpg', 'jpeg', 'png', 'webp', 'gif'}
-
 
 def _batch_names(
     client: OData1C,
     endpoint: str,
     keys: list[str],
 ) -> dict[str, str]:
-    """Батч Description по Ref_Key. {ref_key: description}."""
     result: dict[str, str] = {}
     unique = [
         k for k in set(keys)
@@ -875,12 +829,10 @@ def _batch_names(
             )
     return result
 
-
 def _batch_colors(
     client: OData1C,
     nom_keys: list[str],
 ) -> dict[str, str]:
-    """{nom_key: цвет} через ТЧ ДополнительныеРеквизиты."""
     result: dict[str, str] = {}
     if not ODATA_COLOR_PROP_GUID or not nom_keys:
         return result
@@ -923,19 +875,11 @@ def _batch_colors(
             result[nom_key] = color
     return result
 
-
 def _batch_char_keys_by_nom(
     client: OData1C,
     nom_keys: list[str],
     seed: dict[str, list[str]] | None = None,
 ) -> dict[str, list[str]]:
-    """{nom_key: [char_key, ...]} через штрихкоды и seed.
-
-    Прямой фильтр по Owner в характеристиках 1С не поддерживает
-    (500), поэтому ссылка nom→char берётся из ИнфРегистра
-    ШтрихкодыНоменклатуры (где Номенклатура_Key фильтруется)
-    объединённая с seed (обычно — характеристики из цен).
-    """
     result: dict[str, list[str]] = {}
     seen: dict[str, set[str]] = {}
     if seed:
@@ -979,12 +923,10 @@ def _batch_char_keys_by_nom(
             result.setdefault(nk, []).append(ck)
     return result
 
-
 def _batch_char_descriptions(
     client: OData1C,
     char_keys: list[str],
 ) -> dict[str, str]:
-    """{char_key: Description} батчем по Ref_Key."""
     result: dict[str, str] = {}
     unique = [k for k in set(char_keys) if k and k != EMPTY_GUID]
     if not unique:
@@ -1014,18 +956,11 @@ def _batch_char_descriptions(
             )
     return result
 
-
 def _batch_sizes(
     client: OData1C,
     nom_articles: dict[str, str],
     seed_chars: dict[str, list[str]] | None = None,
 ) -> dict[str, list[dict]]:
-    """{nom_key: [{global, ru}, ...]} из характеристик.
-
-    Порядок: как отдал 1С. Дубли по (global, ru) убираются.
-    seed_chars — предварительно собранные char_keys (например,
-    из регистра цен) объединяются со штрихкодами.
-    """
     result: dict[str, list[dict]] = {}
     if not nom_articles:
         return result
@@ -1056,12 +991,10 @@ def _batch_sizes(
             result[nom_key] = bucket
     return result
 
-
 def _batch_first_photos(
     client: OData1C,
     nom_keys: list[str],
 ) -> dict[str, str]:
-    """{nom_key: file_key} — первый присоединённый файл."""
     result: dict[str, str] = {}
     unique = [k for k in set(nom_keys) if k]
     if not unique:
@@ -1079,7 +1012,7 @@ def _batch_first_photos(
                 'Ref_Key,ВладелецФайла_Key,Расширение,'
                 'Description'
             ),
-            '$orderby': 'ВладелецФайла_Key,Description',
+            '$orderby': 'ВладелецФайла_Key,Description,Ref_Key',
             '$format': 'json',
         }
         try:
@@ -1101,14 +1034,12 @@ def _batch_first_photos(
             result[owner] = row['Ref_Key']
     return result
 
-
 def count_products(
     client: OData1C,
     only_active: bool = True,
     prefix: str = '',
     include_service: bool = False,
 ) -> int:
-    """Общее число товаров с теми же фильтрами, что и get_all."""
     conds = ['IsFolder eq false']
     if only_active:
         conds.append('DeletionMark eq false')
@@ -1127,7 +1058,6 @@ def count_products(
     result = client.get('Catalog_Номенклатура', params)
     return int(result.get('odata.count') or 0)
 
-
 def get_all_products(
     client: OData1C,
     limit: int = 500,
@@ -1136,18 +1066,6 @@ def get_all_products(
     prefix: str = '',
     include_service: bool = False,
 ) -> list[dict]:
-    """Список товаров с базовыми данными.
-
-    По умолчанию выкидывает служебные позиции с пустым артикулом
-    (лейблы, молнии, фурнитура — они всё равно без фото/цены/
-    размеров и засоряют первую страницу). Передайте
-    include_service=True, чтобы увидеть их.
-
-    Батчами обогащается: название категории и группы, цвет из
-    ТЧ ДополнительныеРеквизиты, фолбэк фото на первый файл, если
-    основной ФайлКартинки_Key пуст. Характеристики и штрихкоды
-    не тянет — для деталей вызывать get_product(article).
-    """
     conds = ['IsFolder eq false']
     if only_active:
         conds.append('DeletionMark eq false')
@@ -1165,7 +1083,7 @@ def get_all_products(
             'КатегорияНоменклатуры_Key,ФайлКартинки_Key,'
             'DeletionMark'
         ),
-        '$orderby': 'Description',
+        '$orderby': 'Description,Ref_Key',
         '$top': str(min(limit, _PAGE_SIZE)),
         '$skip': str(offset),
         '$format': 'json',

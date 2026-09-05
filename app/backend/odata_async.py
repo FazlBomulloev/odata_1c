@@ -1,14 +1,12 @@
 import asyncio
 import base64
+import json
 import logging
 from typing import Any
 from urllib.parse import quote
 
 import httpx
 
-# safe-набор для OData: буквы/цифры/`_` кодировать не надо,
-# кавычки/скобки/двоеточие/запятая/знак равно/косая — валидны в
-# query по RFC 3986 sub-delims. Пробелы и кириллица уйдут в %HH.
 _QUERY_SAFE = "'()*!,=/:$"
 _PATH_SAFE = '/'
 
@@ -23,6 +21,33 @@ from .config import (
 
 logger = logging.getLogger(__name__)
 
+def _extract_odata_error(resp: httpx.Response) -> str:
+    text = resp.text or ''
+    if not text:
+        return ''
+    try:
+        body = resp.json()
+    except (ValueError, json.JSONDecodeError):
+        return text[:500]
+    err = body.get('odata.error') if isinstance(body, dict) else None
+    if not isinstance(err, dict):
+        return text[:500]
+    code = err.get('code', '') or ''
+    msg = err.get('message', '')
+    if isinstance(msg, dict):
+        msg = msg.get('value', '') or ''
+    msg = str(msg or '').strip()
+    if code and msg:
+        return f'{code}: {msg}'
+    return msg or code or text[:500]
+
+def _parse_json_body(resp: httpx.Response) -> dict:
+    if resp.status_code == 204:
+        return {}
+    body = resp.content or b''
+    if not body.strip():
+        return {}
+    return resp.json()
 
 class AsyncOData1C:
 
@@ -65,10 +90,7 @@ class AsyncOData1C:
         endpoint: str,
         params: dict | None = None,
     ) -> str:
-        # endpoint содержит кириллицу (`Catalog_Номенклатура`
-        # и т.п.), значения $filter — пробелы и кавычки.
-        # Без URL-энкодинга 1С отвечает 400/500, а FastAPI —
-        # ловит это как 502.
+
         path = quote(endpoint, safe=_PATH_SAFE)
         url = f'{self.base_url}/{path}'
         if params:
@@ -94,18 +116,38 @@ class AsyncOData1C:
                 async with self._sem:
                     resp = await self._client.get(url)
                 if resp.status_code == 401:
+                    detail = _extract_odata_error(resp)
                     raise PermissionError(
-                        'Ошибка авторизации в 1С',
+                        'Ошибка авторизации в 1С'
+                        + (f': {detail}' if detail else ''),
                     )
                 if resp.status_code == 403:
-                    raise PermissionError('Доступ запрещён')
+                    detail = _extract_odata_error(resp)
+                    raise PermissionError(
+                        'Доступ запрещён'
+                        + (f': {detail}' if detail else ''),
+                    )
                 if resp.status_code == 404:
                     raise LookupError(
                         f'Не найдено: {endpoint}',
                     )
+                if 400 <= resp.status_code < 500:
+                    detail = _extract_odata_error(resp) or (
+                        f'HTTP {resp.status_code}'
+                    )
+                    raise ValueError(
+                        f'{endpoint}: {detail}'
+                    )
                 resp.raise_for_status()
-                return resp.json()
-            except (PermissionError, LookupError):
+                try:
+                    return _parse_json_body(resp)
+                except (ValueError, json.JSONDecodeError) as exc:
+                    snippet = (resp.text or '')[:300]
+                    raise ValueError(
+                        f'Не JSON от 1С на {endpoint} '
+                        f'({exc}): {snippet!r}'
+                    )
+            except (PermissionError, LookupError, ValueError):
                 raise
             except (
                 httpx.ConnectError,
@@ -128,5 +170,4 @@ class AsyncOData1C:
         )
 
     async def gather(self, coros) -> list[Any]:
-        """asyncio.gather с общим семафором клиента."""
         return await asyncio.gather(*coros)

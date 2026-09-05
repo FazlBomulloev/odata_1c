@@ -1,26 +1,23 @@
 class ODataError(Exception):
-    """Базовое исключение OData."""
-
+    pass
 
 class ODataConnectionError(ODataError):
-    """Ошибка подключения к 1С."""
+    pass
 
+class ODataTimeoutError(ODataConnectionError):
+    pass
 
 class ODataAuthError(ODataError):
-    """Ошибка авторизации."""
-
+    pass
 
 class ODataNotFoundError(ODataError):
-    """Сущность не найдена."""
-
+    pass
 
 class ODataValidationError(ODataError):
-    """Ошибка валидации данных."""
-
+    pass
 
 class ArticleNotFoundError(ODataError):
-    """Артикул не найден."""
-
+    pass
 
 class ProductExistsError(ODataError):
-    """Товар с таким артикулом уже есть."""
+    pass

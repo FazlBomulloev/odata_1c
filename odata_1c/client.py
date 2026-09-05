@@ -1,12 +1,11 @@
 import base64
+import json
 import logging
 import time
 from urllib.parse import quote
 
 import requests
 
-# safe-набор для OData: пробелы и кириллица в query кодируются,
-# кавычки/скобки/двоеточие/запятая — валидны.
 _QUERY_SAFE = "'()*!,=/:$"
 _PATH_SAFE = '/'
 
@@ -21,16 +20,59 @@ from .exceptions import (
     ODataAuthError,
     ODataConnectionError,
     ODataNotFoundError,
+    ODataTimeoutError,
+    ODataValidationError,
 )
 
 logger = logging.getLogger(__name__)
 
+_IDEMPOTENT = frozenset({'GET', 'HEAD'})
 
 def _make_basic_auth(login: str, password: str) -> str:
-    """Basic Auth с поддержкой кириллицы."""
     creds = f'{login}:{password}'.encode('utf-8')
     return 'Basic ' + base64.b64encode(creds).decode()
 
+def _extract_odata_error(resp: 'requests.Response') -> str:
+    text = ''
+    try:
+        text = resp.text or ''
+    except (UnicodeDecodeError, AttributeError):
+        text = ''
+    if not text:
+        return ''
+    try:
+        body = resp.json()
+    except (ValueError, json.JSONDecodeError):
+        return text[:500]
+    err = body.get('odata.error') if isinstance(body, dict) else None
+    if not isinstance(err, dict):
+        return text[:500]
+    code = err.get('code', '') or ''
+    msg = err.get('message', '')
+    if isinstance(msg, dict):
+        msg = msg.get('value', '') or ''
+    msg = str(msg or '').strip()
+    if code and msg:
+        return f'{code}: {msg}'
+    return msg or code or text[:500]
+
+def _parse_json_body(resp: 'requests.Response') -> dict:
+    if resp.status_code == 204:
+        return {}
+    body = resp.content or b''
+    if not body.strip():
+        return {}
+    try:
+        return resp.json()
+    except (ValueError, json.JSONDecodeError) as exc:
+        snippet = ''
+        try:
+            snippet = (resp.text or '')[:300]
+        except (UnicodeDecodeError, AttributeError):
+            snippet = ''
+        raise ODataValidationError(
+            f'Не JSON в ответе 1С ({exc}): {snippet!r}'
+        )
 
 class OData1C:
 
@@ -44,7 +86,7 @@ class OData1C:
     ):
         self.base_url = base_url.rstrip('/')
         self.timeout = timeout
-        self.max_retries = max_retries
+        self.max_retries = max(1, int(max_retries))
         self._auth_header = _make_basic_auth(
             login, password,
         )
@@ -60,7 +102,6 @@ class OData1C:
         endpoint: str,
         params: dict | None = None,
     ) -> str:
-        """URL с процентным кодированием пробелов и кириллицы."""
         path = quote(endpoint, safe=_PATH_SAFE)
         url = f'{self.base_url}/{path}'
         if params:
@@ -71,6 +112,25 @@ class OData1C:
             url = f'{url}?{qs}'
         return url
 
+    def _send_once(
+        self,
+        method: str,
+        url: str,
+        json_data: dict | None,
+    ) -> requests.Response:
+        req = requests.Request(
+            method=method,
+            url=url,
+            json=json_data,
+            headers=self.session.headers,
+        )
+        prepared = req.prepare()
+        prepared.url = url
+        return self.session.send(
+            prepared,
+            timeout=self.timeout,
+        )
+
     def _request(
         self,
         method: str,
@@ -78,118 +138,145 @@ class OData1C:
         params: dict | None = None,
         json_data: dict | None = None,
     ) -> requests.Response:
-        """Выполняет запрос с retry и backoff."""
+        method = method.upper()
         url = self._build_url(endpoint, params)
-        last_exc = None
+        idempotent = method in _IDEMPOTENT
+        attempts = self.max_retries if idempotent else 1
+        last_exc: Exception | None = None
 
-        for attempt in range(1, self.max_retries + 1):
+        for attempt in range(1, attempts + 1):
             try:
                 logger.debug(
-                    'Запрос %s %s (попытка %d)',
-                    method, endpoint, attempt,
+                    'Запрос %s %s (попытка %d/%d)',
+                    method, endpoint, attempt, attempts,
                 )
-                req = requests.Request(
-                    method=method,
-                    url=url,
-                    json=json_data,
-                    headers=self.session.headers,
-                )
-                prepared = req.prepare()
-                prepared.url = url
-                resp = self.session.send(
-                    prepared,
-                    timeout=self.timeout,
-                )
-                self._check_response(resp, endpoint)
-                return resp
-
-            except ODataAuthError:
-                raise
-            except ODataNotFoundError:
-                raise
-            except (
-                requests.ConnectionError,
-                requests.Timeout,
-            ) as exc:
-                last_exc = exc
-                wait = 2 ** attempt
-                logger.warning(
-                    'Ошибка соединения с 1С (%s), '
-                    'повтор через %d сек',
-                    exc, wait,
-                )
-                time.sleep(wait)
-            except requests.RequestException as exc:
-                last_exc = exc
-                if attempt < self.max_retries:
-                    wait = 2 ** attempt
-                    logger.warning(
-                        'Ошибка запроса (%s), '
-                        'повтор через %d сек',
-                        exc, wait,
+                resp = self._send_once(method, url, json_data)
+            except requests.Timeout as exc:
+                if not idempotent:
+                    raise ODataTimeoutError(
+                        f'Таймаут {method} {endpoint} — '
+                        f'состояние в 1С неизвестно, '
+                        f'ретрай запрещён: {exc}'
                     )
-                    time.sleep(wait)
+                last_exc = exc
+                self._sleep_backoff(attempt, attempts, exc)
+                continue
+            except requests.ConnectionError as exc:
+                if not idempotent:
+                    raise ODataConnectionError(
+                        f'Обрыв соединения {method} {endpoint}: '
+                        f'{exc}'
+                    )
+                last_exc = exc
+                self._sleep_backoff(attempt, attempts, exc)
+                continue
+            except requests.RequestException as exc:
+
+                raise ODataConnectionError(
+                    f'Ошибка запроса {method} {endpoint}: {exc}'
+                )
+
+            status = resp.status_code
+            if 500 <= status < 600 and idempotent \
+                    and attempt < attempts:
+                detail = _extract_odata_error(resp) or (
+                    f'HTTP {status}'
+                )
+                logger.warning(
+                    '5xx от 1С (%s), повтор', detail,
+                )
+                self._sleep_backoff(attempt, attempts, None)
+                continue
+
+            self._check_response(resp, endpoint)
+            return resp
 
         raise ODataConnectionError(
-            f'Не удалось выполнить запрос после '
-            f'{self.max_retries} попыток: {last_exc}'
+            f'Не удалось выполнить {method} {endpoint} '
+            f'за {attempts} попыт(ки): {last_exc}'
         )
+
+    def _sleep_backoff(
+        self,
+        attempt: int,
+        attempts: int,
+        exc: Exception | None,
+    ) -> None:
+        if attempt >= attempts:
+            return
+        wait = 2 ** attempt
+        if exc is not None:
+            logger.warning(
+                'Сетевая ошибка (%s), повтор через %d сек',
+                exc, wait,
+            )
+        time.sleep(wait)
 
     def _check_response(
         self,
         resp: requests.Response,
         endpoint: str,
     ) -> None:
-        """Проверяет HTTP-ответ."""
-        if resp.status_code == 401:
+        status = resp.status_code
+        if status < 400:
+            return
+        detail = _extract_odata_error(resp)
+        if status == 401:
             raise ODataAuthError(
-                'Ошибка авторизации в 1С'
+                f'Ошибка авторизации в 1С: {detail}'
+                if detail else 'Ошибка авторизации в 1С'
             )
-        if resp.status_code == 403:
+        if status == 403:
             raise ODataAuthError(
-                'Доступ запрещён'
+                f'Доступ запрещён: {detail}'
+                if detail else 'Доступ запрещён'
             )
-        if resp.status_code == 404:
+        if status == 404:
             raise ODataNotFoundError(
                 f'Не найдено: {endpoint}'
+                + (f' — {detail}' if detail else '')
             )
-        resp.raise_for_status()
+        if 400 <= status < 500:
+            raise ODataValidationError(
+                f'HTTP {status} на {endpoint}'
+                + (f': {detail}' if detail else '')
+            )
+        raise ODataConnectionError(
+            f'HTTP {status} на {endpoint}'
+            + (f': {detail}' if detail else '')
+        )
 
     def get(
         self,
         endpoint: str,
         params: dict | None = None,
     ) -> dict:
-        """GET-запрос, возвращает JSON."""
         resp = self._request('GET', endpoint, params=params)
-        return resp.json()
+        return _parse_json_body(resp)
 
     def post(
         self,
         endpoint: str,
         data: dict,
     ) -> dict:
-        """POST-запрос, создание сущности."""
         resp = self._request(
             'POST', endpoint, json_data=data,
         )
         logger.info('Создано: %s', endpoint)
-        return resp.json()
+        return _parse_json_body(resp)
 
     def patch(
         self,
         endpoint: str,
         data: dict,
     ) -> dict:
-        """PATCH-запрос, обновление сущности."""
         resp = self._request(
             'PATCH', endpoint, json_data=data,
         )
         logger.info('Обновлено: %s', endpoint)
-        return resp.json()
+        return _parse_json_body(resp)
 
     def delete(self, endpoint: str) -> bool:
-        """DELETE-запрос."""
         self._request('DELETE', endpoint)
         logger.info('Удалено: %s', endpoint)
         return True

@@ -36,10 +36,7 @@ from .services import (
 
 logger = logging.getLogger(__name__)
 
-# Ручной триггер должен дождаться текущего цикла, а не запускать
-# параллельный — иначе двойная нагрузка на 1С.
 _lock = asyncio.Lock()
-
 
 async def _has_prior_success(kind: str) -> bool:
     async with SessionLocal() as session:
@@ -52,7 +49,6 @@ async def _has_prior_success(kind: str) -> bool:
             .limit(1)
         )
         return (await session.execute(q)).first() is not None
-
 
 async def _last_full_success_at(kind: str) -> datetime | None:
     async with SessionLocal() as session:
@@ -68,18 +64,17 @@ async def _last_full_success_at(kind: str) -> datetime | None:
         )
         return (await session.execute(q)).scalar_one_or_none()
 
-
 def _window(is_first: bool) -> tuple[datetime, datetime]:
     date_to = datetime.utcnow()
     days = SYNC_BACKFILL_DAYS if is_first else SYNC_REFRESH_DAYS
     return date_to - timedelta(days=days), date_to
-
 
 def _iter_chunks(
     date_from: datetime,
     date_to: datetime,
     chunk_days: int,
 ):
+
     cur = date_from
     step = timedelta(days=chunk_days)
     while cur < date_to:
@@ -87,6 +82,7 @@ def _iter_chunks(
         yield cur, nxt
         cur = nxt
 
+_CHUNK_FETCH_GAP = timedelta(seconds=1)
 
 async def _record_sync(
     kind: str,
@@ -126,7 +122,6 @@ async def _record_sync(
         await session.commit()
     return count
 
-
 async def sync_warehouses(client: AsyncOData1C) -> int:
     rows = await fetch_catalog_names(client, WAREHOUSES_CATALOG)
     async with SessionLocal() as session:
@@ -139,7 +134,6 @@ async def sync_warehouses(client: AsyncOData1C) -> int:
     logger.info('Синк складов: %d', len(rows))
     return len(rows)
 
-
 async def sync_organizations(client: AsyncOData1C) -> int:
     rows = await fetch_catalog_names(client, ORGS_CATALOG)
     async with SessionLocal() as session:
@@ -151,7 +145,6 @@ async def sync_organizations(client: AsyncOData1C) -> int:
         await session.commit()
     logger.info('Синк организаций: %d', len(rows))
     return len(rows)
-
 
 async def sync_stock(client: AsyncOData1C) -> int:
     rows = await fetch_stock(client, only_positive=False)
@@ -184,7 +177,6 @@ async def sync_stock(client: AsyncOData1C) -> int:
     logger.info('Синк остатков: %d строк', len(objs))
     return len(objs)
 
-
 def _movement_row_to_obj(r: dict, now: datetime) -> Movement:
     return Movement(
         period=r.get('period'),
@@ -213,7 +205,6 @@ def _movement_row_to_obj(r: dict, now: datetime) -> Movement:
         snapshot_at=now,
     )
 
-
 def _sale_row_to_obj(r: dict, now: datetime) -> Sale:
     return Sale(
         nomenclature_key=r.get('nomenclature_key') or '',
@@ -230,14 +221,14 @@ def _sale_row_to_obj(r: dict, now: datetime) -> Sale:
         snapshot_at=now,
     )
 
-
 async def _sync_chunk_movements(
     client: AsyncOData1C,
     date_from: datetime,
     date_to: datetime,
     now: datetime,
 ) -> int:
-    rows = await fetch_movements(client, date_from, date_to)
+    fetch_to = date_to - _CHUNK_FETCH_GAP
+    rows = await fetch_movements(client, date_from, fetch_to)
     async with SessionLocal() as session:
         await session.execute(
             delete(Movement).where(
@@ -254,14 +245,14 @@ async def _sync_chunk_movements(
         await session.commit()
     return len(rows)
 
-
 async def _sync_chunk_sales(
     client: AsyncOData1C,
     date_from: datetime,
     date_to: datetime,
     now: datetime,
 ) -> int:
-    rows = await fetch_all_sales(client, date_from, date_to)
+    fetch_to = date_to - _CHUNK_FETCH_GAP
+    rows = await fetch_all_sales(client, date_from, fetch_to)
     async with SessionLocal() as session:
         await session.execute(
             delete(Sale).where(
@@ -277,7 +268,6 @@ async def _sync_chunk_sales(
             await session.flush()
         await session.commit()
     return len(rows)
-
 
 async def sync_movements(
     client: AsyncOData1C,
@@ -304,7 +294,6 @@ async def sync_movements(
     logger.info('Синк движений: всего %d строк', total)
     return total
 
-
 async def sync_sales(
     client: AsyncOData1C,
     full: bool = False,
@@ -330,7 +319,6 @@ async def sync_sales(
     logger.info('Синк продаж: всего %d строк', total)
     return total
 
-
 def _month_starts(date_from: datetime, date_to: datetime):
     cur = datetime(date_from.year, date_from.month, 1)
     end = datetime(date_to.year, date_to.month, 1)
@@ -342,18 +330,17 @@ def _month_starts(date_from: datetime, date_to: datetime):
         yield cur, nxt
         cur = nxt
 
-
 async def _sync_chunk_turnover(
     date_from: datetime,
     date_to: datetime,
     now: datetime,
 ) -> int:
-    # get_sales_turnover — синхронный (использует requests),
-    # уводим в executor, чтобы не блокировать event loop.
+
+    fetch_to = date_to - _CHUNK_FETCH_GAP
     loop = asyncio.get_running_loop()
 
     def _load() -> list:
-        return get_sales_turnover(OData1C(), date_from, date_to)
+        return get_sales_turnover(OData1C(), date_from, fetch_to)
 
     records = await loop.run_in_executor(None, _load)
 
@@ -392,7 +379,6 @@ async def _sync_chunk_turnover(
         await session.commit()
     return len(records)
 
-
 async def sync_sales_turnover(
     client: AsyncOData1C,
     full: bool = False,
@@ -416,7 +402,6 @@ async def sync_sales_turnover(
     logger.info('Синк валовой прибыли: всего %d строк', total)
     return total
 
-
 async def _should_full_rebuild() -> bool:
     threshold = timedelta(days=SYNC_FULL_REBUILD_DAYS)
     now = datetime.utcnow()
@@ -425,7 +410,6 @@ async def _should_full_rebuild() -> bool:
         if last is None or (now - last) >= threshold:
             return True
     return False
-
 
 async def run_sync_cycle(full: bool = False) -> None:
     if _lock.locked():
@@ -455,7 +439,6 @@ async def run_sync_cycle(full: bool = False) -> None:
                 sync_sales_turnover(client, full=full),
                 full=full,
             )
-
 
 async def sync_loop() -> None:
     interval = SYNC_INTERVAL_HOURS * 3600

@@ -5,6 +5,7 @@ from .exceptions import (
     ODataConnectionError,
     ODataError,
     ODataNotFoundError,
+    ODataTimeoutError,
     ODataValidationError,
     ProductExistsError,
 )
@@ -84,6 +85,7 @@ __all__ = [
     'DOCUMENT_OPERATION',
     'ODataError',
     'ODataConnectionError',
+    'ODataTimeoutError',
     'ODataAuthError',
     'ODataNotFoundError',
     'ODataValidationError',

@@ -39,7 +39,6 @@ DOCUMENT_OPERATION = {
     'Document_ОтчетПереработчика': 'переработка',
 }
 
-# Виды с парой Expense/Receipt в регистре; остальные — одиночные.
 PAIRED_KINDS = frozenset({
     'Document_ПеремещениеЗапасов',
     'Document_ПередачаТоваровМеждуОрганизациями',
@@ -62,16 +61,31 @@ EXPENSE_KINDS = (
     'Document_РасходнаяНакладная',
 )
 
-
 def _iso(value) -> str:
-    """datetime → ISO без tz; строку возвращает как есть."""
     if isinstance(value, datetime):
         return value.strftime('%Y-%m-%dT%H:%M:%S')
     return str(value)
 
+def _iso_to(value) -> str:
+    if isinstance(value, datetime):
+        no_time = (
+            value.hour == 0 and value.minute == 0
+            and value.second == 0 and value.microsecond == 0
+        )
+        if no_time:
+            return value.strftime('%Y-%m-%d') + 'T23:59:59'
+        return value.strftime('%Y-%m-%dT%H:%M:%S')
+    s = str(value)
+    if len(s) == 10 and s[4] == '-' and s[7] == '-':
+        return f'{s}T23:59:59'
+    if s.endswith('T00:00:00'):
+        return s[:10] + 'T23:59:59'
+    return s
+
+def _period_bounds(date_from, date_to) -> tuple[str, str]:
+    return _iso(date_from), _iso_to(date_to)
 
 def _parse_dt(value):
-    """Мягкий парсинг Edm.DateTime; None на битых значениях."""
     if not value:
         return None
     try:
@@ -82,16 +96,12 @@ def _parse_dt(value):
         logger.warning('Битая дата "%s", пропускаю', value)
         return None
 
-
 def _short_kind(recorder_type: str) -> str:
-    """'StandardODATA.Document_XX' → 'Document_XX'."""
     if not recorder_type:
         return ''
     return recorder_type.rsplit('.', 1)[-1]
 
-
 def _parse_size(description: str, article: str = ''):
-    """(size_global, size_ru, size) из '<арт>-<global>, <ru>'."""
     if not description:
         return ('', '', '')
     body = description
@@ -104,11 +114,9 @@ def _parse_size(description: str, article: str = ''):
         return (left, right, f'{left}, {right}')
     return ('', '', description)
 
-
 def _chunks(seq, n):
     for i in range(0, len(seq), n):
         yield seq[i:i + n]
-
 
 def _batch_get_by_keys(
     client: OData1C,
@@ -116,7 +124,6 @@ def _batch_get_by_keys(
     keys,
     select: str = '',
 ) -> dict:
-    """Пакетно тянет сущности по Ref_Key. {ref_key: item}."""
     result = {}
     unique = [
         k for k in set(keys)
@@ -143,9 +150,7 @@ def _batch_get_by_keys(
             result[item['Ref_Key']] = item
     return result
 
-
 def _batch_get_barcodes(client: OData1C, nom_keys) -> dict:
-    """{(Номенклатура_Key, Характеристика_Key): штрихкод}."""
     result = {}
     unique = [k for k in set(nom_keys) if k]
     for chunk in _chunks(unique, BATCH_KEYS):
@@ -174,9 +179,7 @@ def _batch_get_barcodes(client: OData1C, nom_keys) -> dict:
                 result[key] = item.get('Штрихкод', '')
     return result
 
-
 def _batch_get_documents(client: OData1C, recorders) -> dict:
-    """{recorder_guid: {..., '_kind': 'Document_XX'}}."""
     by_kind: dict[str, list[str]] = defaultdict(list)
     for guid, rtype in recorders:
         kind = _short_kind(rtype)
@@ -200,7 +203,6 @@ def _batch_get_documents(client: OData1C, recorders) -> dict:
             docs[guid] = doc
     return docs
 
-
 def _query_register(
     client: OData1C,
     date_from,
@@ -209,11 +211,8 @@ def _query_register(
     use_type_filter: bool = True,
     select: str = '',
 ) -> list[dict]:
-    """Тянет строки регистра за период с пагинацией."""
-    # Организация_Key / СтруктурнаяЕдиница_Key в $filter не
-    # включаем — сервер отвечает 500. Фильтруем их в Python.
-    d_from = _iso(date_from)
-    d_to = _iso(date_to)
+
+    d_from, d_to = _period_bounds(date_from, date_to)
 
     conds = [
         f"Period ge datetime'{d_from}'",
@@ -230,12 +229,14 @@ def _query_register(
     base_filter = ' and '.join(conds)
     rows: list[dict] = []
     skip = 0
+
+    order = 'Period,Recorder,LineNumber,RecordType'
     while True:
         params = {
             '$filter': base_filter,
             '$top': str(PAGE_SIZE),
             '$skip': str(skip),
-            '$orderby': 'Period',
+            '$orderby': order,
             '$format': 'json',
         }
         if select:
@@ -253,14 +254,12 @@ def _query_register(
     )
     return rows
 
-
 def _fetch_rows(
     client: OData1C,
     date_from,
     date_to,
     recorder_kinds=None,
 ) -> list[dict]:
-    """Выборка регистра; фолбэк на Python-фильтр Recorder_Type."""
     try:
         return _query_register(
             client, date_from, date_to,
@@ -288,9 +287,7 @@ def _fetch_rows(
             if r.get('Recorder_Type') in allowed
         ]
 
-
 def _resolve_names(client: OData1C, keys, endpoint: str) -> dict:
-    """{key: Description} или {} если справочник закрыт."""
     if not keys:
         return {}
     try:
@@ -308,7 +305,6 @@ def _resolve_names(client: OData1C, keys, endpoint: str) -> dict:
         for k, v in got.items()
     }
 
-
 def _build_record(
     period,
     quantity: float,
@@ -323,7 +319,6 @@ def _build_record(
     document: dict,
     catalogs: dict,
 ) -> MovementRecord:
-    """Собирает MovementRecord из словарей-справочников."""
     noms = catalogs['nomenclature']
 
     chars = catalogs['characteristics']
@@ -384,13 +379,8 @@ def _build_record(
         recorder=recorder,
     )
 
-
 def _pair_transfers(rows):
-    """Жадно матчит пары Expense/Receipt внутри Recorder."""
-    # 1С УНФ пишет строки перемещения последовательно (сначала
-    # все Expense, потом все Receipt) — LineNumber сквозной и
-    # для парения не годится. Ключ пары —
-    # (Номенклатура_Key, Характеристика_Key, Количество).
+
     by_rec: dict = defaultdict(list)
     for row in rows:
         by_rec[row.get('Recorder', '')].append(row)
@@ -448,9 +438,7 @@ def _pair_transfers(rows):
         )
     return pairs, orphans
 
-
 def _collect_catalogs(client, rows, extra_recorders=None):
-    """Пакетно резолвит все справочники по строкам регистра."""
     nom_keys = {r.get('Номенклатура_Key', '') for r in rows}
     char_keys = {r.get('Характеристика_Key', '') for r in rows}
     org_keys = {r.get('Организация_Key', '') for r in rows}
@@ -489,15 +477,11 @@ def _collect_catalogs(client, rows, extra_recorders=None):
         'warehouses': warehouses,
     }
 
-
 def _normalize(
     rows, catalogs,
     organization: str = '', warehouse: str = '',
 ):
-    """Строки регистра → list[MovementRecord]."""
-    # Фильтр по org/wh применяется здесь, а не в _fetch_rows:
-    # иначе разорвались бы пары межфирменных передач и обычных
-    # перемещений между складами.
+
     docs = catalogs['documents']
     paired_rtypes = {
         f'{RECORDER_TYPE_PREFIX}{k}' for k in PAIRED_KINDS
@@ -579,9 +563,7 @@ def _normalize(
 
     return result
 
-
 def _row_to_record(row, docs, catalogs):
-    """Одиночная строка регистра → MovementRecord."""
     recorder = row.get('Recorder', '')
     doc = docs.get(recorder, {})
     kind = _short_kind(row.get('Recorder_Type', ''))
@@ -618,7 +600,6 @@ def _row_to_record(row, docs, catalogs):
         catalogs=catalogs,
     )
 
-
 def _get_movements(
     client: OData1C,
     date_from,
@@ -627,7 +608,6 @@ def _get_movements(
     warehouse: str = '',
     recorder_kinds=None,
 ) -> list[MovementRecord]:
-    """Общий костяк: выборка → резолв → нормализация."""
     if isinstance(date_from, datetime) and date_from < MIN_PERIOD:
         date_from = MIN_PERIOD
 
@@ -650,9 +630,7 @@ def _get_movements(
         warehouse=warehouse or '',
     )
 
-
 def _prefilter_rows(rows, organization: str, warehouse: str):
-    """Сужает строки ДО резолва справочников; пары не разрывает."""
     paired_rtypes = {
         f'{RECORDER_TYPE_PREFIX}{k}' for k in PAIRED_KINDS
     }
@@ -682,7 +660,6 @@ def _prefilter_rows(rows, organization: str, warehouse: str):
 
     return [r for r in rows if keep(r)]
 
-
 def get_transfers(
     client: OData1C,
     date_from,
@@ -690,13 +667,11 @@ def get_transfers(
     organization: str = '',
     warehouse: str = '',
 ) -> list[MovementRecord]:
-    """Перемещения запасов (складские и межфирменные)."""
     return _get_movements(
         client, date_from, date_to,
         organization, warehouse,
         recorder_kinds=TRANSFER_KINDS,
     )
-
 
 def get_write_offs(
     client: OData1C,
@@ -705,13 +680,11 @@ def get_write_offs(
     organization: str = '',
     warehouse: str = '',
 ) -> list[MovementRecord]:
-    """Списания запасов."""
     return _get_movements(
         client, date_from, date_to,
         organization, warehouse,
         recorder_kinds=WRITE_OFF_KINDS,
     )
-
 
 def get_receipts(
     client: OData1C,
@@ -720,13 +693,11 @@ def get_receipts(
     organization: str = '',
     warehouse: str = '',
 ) -> list[MovementRecord]:
-    """Оприходования, приходные ордера, ввод остатков."""
     return _get_movements(
         client, date_from, date_to,
         organization, warehouse,
         recorder_kinds=RECEIPT_KINDS,
     )
-
 
 def get_expenses(
     client: OData1C,
@@ -735,13 +706,11 @@ def get_expenses(
     organization: str = '',
     warehouse: str = '',
 ) -> list[MovementRecord]:
-    """Расходные ордера."""
     return _get_movements(
         client, date_from, date_to,
         organization, warehouse,
         recorder_kinds=EXPENSE_KINDS,
     )
-
 
 def get_all_movements(
     client: OData1C,
@@ -750,20 +719,17 @@ def get_all_movements(
     organization: str = '',
     warehouse: str = '',
 ) -> list[MovementRecord]:
-    """Все виды движений разом; тип операции — по виду документа."""
     return _get_movements(
         client, date_from, date_to,
         organization, warehouse,
         recorder_kinds=None,
     )
 
-
 def list_recorder_types(
     client: OData1C,
     date_from,
     date_to,
 ) -> list[str]:
-    """Уникальные Recorder_Type за период (для расширения маппинга)."""
     rows = _query_register(
         client, date_from, date_to,
         use_type_filter=False,

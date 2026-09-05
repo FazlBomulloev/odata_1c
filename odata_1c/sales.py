@@ -16,9 +16,9 @@ from .movements import (
     WAREHOUSES_CATALOG,
     _batch_get_by_keys,
     _chunks,
-    _iso,
     _parse_dt,
     _parse_size,
+    _period_bounds,
     _resolve_names,
 )
 
@@ -50,9 +50,7 @@ CHANNEL_RETAIL = 'магазин'
 TYPE_SALE = 'продажа'
 TYPE_RETURN = 'возврат'
 
-
 def _resolve_channel(description: str) -> str:
-    """Description договора → канал."""
     if not description:
         return CHANNEL_UNKNOWN
     low = description.lower()
@@ -61,7 +59,6 @@ def _resolve_channel(description: str) -> str:
             return channel
     return CHANNEL_UNKNOWN
 
-
 def _fetch_headers(
     client: OData1C,
     endpoint: str,
@@ -69,11 +66,9 @@ def _fetch_headers(
     date_to,
     select: str,
 ) -> list[dict]:
-    """Постранично тянет шапки документа за период."""
     if isinstance(date_from, datetime) and date_from < MIN_PERIOD:
         date_from = MIN_PERIOD
-    d_from = _iso(date_from)
-    d_to = _iso(date_to)
+    d_from, d_to = _period_bounds(date_from, date_to)
 
     flt = (
         f"Date ge datetime'{d_from}' and "
@@ -81,13 +76,14 @@ def _fetch_headers(
     )
     rows: list[dict] = []
     skip = 0
+
     while True:
         params = {
             '$filter': flt,
             '$select': select,
             '$top': str(PAGE_SIZE),
             '$skip': str(skip),
-            '$orderby': 'Date',
+            '$orderby': 'Date,Ref_Key',
             '$format': 'json',
         }
         try:
@@ -106,13 +102,11 @@ def _fetch_headers(
     )
     return rows
 
-
 def _fetch_rows_by_refs(
     client: OData1C,
     endpoint: str,
     refs,
 ) -> list[dict]:
-    """Тянет строки ТЧ по списку Ref_Key документов."""
     result: list[dict] = []
     unique = [r for r in set(refs) if r and r != EMPTY_GUID]
     for chunk in _chunks(unique, BATCH_KEYS):
@@ -136,21 +130,14 @@ def _fetch_rows_by_refs(
         result.extend(data.get('value', []))
     return result
 
-
 def _fetch_commission_warehouses(
     client: OData1C,
     date_from,
     date_to,
 ) -> dict:
-    """{Recorder_Key: СтруктурнаяЕдиница_Key} для ОтчетКомиссионера.
-
-    Склад в шапке комиссионера не хранится; берём его из регистра
-    ДоходыИРасходы, куда документ пишет проводки со складом.
-    """
     if isinstance(date_from, datetime) and date_from < MIN_PERIOD:
         date_from = MIN_PERIOD
-    d_from = _iso(date_from)
-    d_to = _iso(date_to)
+    d_from, d_to = _period_bounds(date_from, date_to)
 
     flt = (
         f"Period ge datetime'{d_from}' and "
@@ -165,6 +152,7 @@ def _fetch_commission_warehouses(
             '$select': 'Recorder,СтруктурнаяЕдиница_Key',
             '$top': str(PAGE_SIZE),
             '$skip': str(skip),
+            '$orderby': 'Period,Recorder,LineNumber',
             '$format': 'json',
         }
         try:
@@ -207,9 +195,7 @@ def _fetch_commission_warehouses(
     )
     return result
 
-
 def _resolve_contracts(client: OData1C, keys) -> dict:
-    """{Договор_Key: канал}."""
     contracts = _batch_get_by_keys(
         client, CONTRACTS, keys,
         select='Ref_Key,Description',
@@ -219,26 +205,21 @@ def _resolve_contracts(client: OData1C, keys) -> dict:
         for k, v in contracts.items()
     }
 
-
 def _resolve_nomenclature(
     client: OData1C, keys,
 ) -> dict:
-    """{Номенклатура_Key: {'Description', 'Артикул'}}."""
     return _batch_get_by_keys(
         client, NOMENCLATURE, keys,
         select='Ref_Key,Description,Артикул',
     )
 
-
 def _resolve_characteristics(
     client: OData1C, keys,
 ) -> dict:
-    """{Характеристика_Key: {'Description'}}."""
     return _batch_get_by_keys(
         client, CHARACTERISTICS, keys,
         select='Ref_Key,Description',
     )
-
 
 def _row_to_sale(
     row: dict,
@@ -252,7 +233,6 @@ def _row_to_sale(
     warehouse_names: dict | None = None,
     organization_names: dict | None = None,
 ) -> SaleRecord:
-    """Строка ТЧ → SaleRecord."""
     nom_key = row.get('Номенклатура_Key', '') or ''
     char_key = row.get('Характеристика_Key', '') or ''
     if char_key == EMPTY_GUID:
@@ -305,7 +285,6 @@ def _row_to_sale(
         organization=organization,
     )
 
-
 def _build_records(
     rows: list[dict],
     headers_by_ref: dict,
@@ -337,13 +316,11 @@ def _build_records(
         ))
     return result
 
-
 def _collect_catalogs(
     client: OData1C,
     rows_sales: list[dict],
     rows_returns: list[dict],
 ) -> tuple[dict, dict]:
-    """Пакетно резолвит номенклатуру и характеристики строк."""
     nom_keys = set()
     char_keys = set()
     for row in rows_sales + rows_returns:
@@ -357,14 +334,12 @@ def _collect_catalogs(
     characteristics = _resolve_characteristics(client, char_keys)
     return nomenclature, characteristics
 
-
 def get_marketplace_sales(
     client: OData1C,
     date_from,
     date_to,
     channel: str | None = None,
 ) -> list[SaleRecord]:
-    """Продажи и возвраты маркетплейсов (Отчёт комиссионера)."""
     headers = _fetch_headers(
         client, DOC_COMMISSION, date_from, date_to,
         select='Ref_Key,Date,Договор_Key,Организация_Key',
@@ -454,7 +429,6 @@ def get_marketplace_sales(
     ))
     return result
 
-
 def _retail_row_to_sale(
     row: dict,
     header: dict,
@@ -513,13 +487,11 @@ def _retail_row_to_sale(
         organization=organization,
     )
 
-
 def get_retail_sales(
     client: OData1C,
     date_from,
     date_to,
 ) -> list[SaleRecord]:
-    """Розничные продажи (Отчёт о розничных продажах)."""
     headers = _fetch_headers(
         client, DOC_RETAIL, date_from, date_to,
         select=(
@@ -574,13 +546,11 @@ def get_retail_sales(
         ))
     return result
 
-
 def get_all_sales(
     client: OData1C,
     date_from,
     date_to,
 ) -> list[SaleRecord]:
-    """Продажи обоих источников: маркетплейсы + розница."""
     result = get_marketplace_sales(client, date_from, date_to)
     result.extend(get_retail_sales(client, date_from, date_to))
     return result

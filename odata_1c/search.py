@@ -5,17 +5,13 @@ from .exceptions import ArticleNotFoundError
 
 logger = logging.getLogger(__name__)
 
-
 def _esc(value: str) -> str:
-    """Экранирует одинарную кавычку для OData $filter."""
     return value.replace("'", "''")
-
 
 def search_by_article(
     client: OData1C,
     prefix: str,
 ) -> list[str]:
-    """Возвращает все артикулы номенклатуры по префиксу."""
     params = {
         '$filter': (
             f"startswith(Артикул, '{_esc(prefix)}')"
@@ -35,12 +31,10 @@ def search_by_article(
     )
     return sorted(articles)
 
-
 def find_free_article(
     client: OData1C,
     prefix: str,
 ) -> str:
-    """Находит следующий свободный артикул с этим префиксом."""
     articles = search_by_article(client, prefix)
     if not articles:
         return f'{prefix}01'
@@ -58,12 +52,10 @@ def find_free_article(
     suffix_len = max(2, len(articles[0]) - len(prefix))
     return f'{prefix}{next_num:0{suffix_len}d}'
 
-
 def article_exists(
     client: OData1C,
     article: str,
 ) -> bool:
-    """Проверяет, занят ли артикул."""
     params = {
         '$filter': f"Артикул eq '{_esc(article)}'",
         '$select': 'Ref_Key',
@@ -72,12 +64,10 @@ def article_exists(
     result = client.get('Catalog_Номенклатура', params)
     return len(result.get('value', [])) > 0
 
-
 def get_nomenclature_by_article(
     client: OData1C,
     article: str,
 ) -> dict:
-    """Возвращает номенклатуру по артикулу."""
     params = {
         '$filter': f"Артикул eq '{_esc(article)}'",
         '$format': 'json',
