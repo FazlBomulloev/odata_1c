@@ -1,24 +1,62 @@
 # odata_1c
 
-Python-клиент для чтения товародвижения из 1С УНФ 3.0 через
-стандартный интерфейс OData. Возвращает плоские нормализованные
-записи `MovementRecord`, готовые к загрузке в БД, отчёт или
-интеграционный поток.
+Работа с 1С УНФ 3.0 через стандартный интерфейс OData:
+товародвижение, остатки, продажи (маркетплейсы и розница),
+валовая прибыль, CRUD товаров. Состоит из трёх частей:
 
-Модуль ничего не пишет в 1С, ничего не сохраняет на диск и
-не поднимает HTTP-сервисов. Это библиотека: подключил, вызвал,
-получил `list[MovementRecord]` — что делать дальше решает
-вызывающий код.
+- `odata_1c/` — синхронная Python-библиотека (`requests`);
+- `app/backend/` — FastAPI: фоновая синхронизация в SQLite
+  и REST `/api/*` для веб-интерфейса;
+- `app/web/` — React + TypeScript + Vite, раздаётся nginx.
 
 ---
 
-## Установка
+## Запуск в Docker
+
+```bash
+cp .env.example .env   # заполнить ODATA_*, SESSION_SECRET,
+                       # OWNER_PASSWORD
+docker compose up -d --build
+```
+
+Веб-интерфейс — `http://localhost:${WEB_PORT:-8080}`, бэкенд
+доступен только внутри сети compose. SQLite-кэш лежит в
+`./data/app.db`.
+
+Все переменные окружения с пояснениями — в `.env.example`.
+
+---
+
+## Бэкенд
+
+- **Синхронизация** (`sync.py`). Раз в `SYNC_INTERVAL_HOURS`:
+  склады, организации, остатки, движения, продажи, обороты.
+  Первый прогон — бэкфилл за `SYNC_BACKFILL_DAYS` чанками по
+  `SYNC_CHUNK_DAYS`, дальше перезаписывается окно
+  `SYNC_REFRESH_DAYS`. Раз в `SYNC_FULL_REBUILD_DAYS` —
+  полный ребилд. Прогоны пишутся в `sync_runs`.
+- **Чтение** — страницы продаж, движений, остатков и валовой
+  прибыли отдаются из кэша с серверной пагинацией.
+- **Товары** — идут в 1С напрямую через библиотеку
+  (в отдельном потоке).
+- **Авторизация** — session-cookie, роли owner / user.
+  Owner создаётся при первом старте из `OWNER_USERNAME` /
+  `OWNER_PASSWORD`. `AUTH_ENABLED=false` отключает проверку.
+
+Асинхронный клиент бэкенда (`odata_async.py`, `services.py`)
+переиспользует константы и чистые функции библиотеки.
+Совпадение результатов продаж проверяет
+`tests/test_sales_parity.py`.
+
+---
+
+## Библиотека
+
+### Установка
 
 ```bash
 pip install -r requirements.txt
 ```
-
-Зависимости минимальные: `requests`, `python-dotenv`.
 
 Заведите `.env` рядом с пакетом:
 
@@ -33,52 +71,66 @@ ODATA_MAX_RETRIES=3
 Логин с кириллицей поддерживается (`OData1C` кодирует Basic Auth
 в UTF-8, а не в cp1251, как это делает `requests` по умолчанию).
 
----
-
-## Быстрый старт
+### Быстрый старт
 
 ```python
 from datetime import datetime
-from odata_1c import OData1C, get_all_movements
+from odata_1c import OData1C, get_all_movements, get_all_sales
 
 client = OData1C()
 movements = get_all_movements(
-    client,
-    datetime(2025, 8, 1),
-    datetime(2025, 8, 31),
+    client, datetime(2025, 8, 1), datetime(2025, 8, 31),
 )
-
-for m in movements:
-    print(m.period, m.operation_type, m.article,
-          m.size, m.quantity,
-          m.warehouse_from, '->', m.warehouse_to)
+sales = get_all_sales(
+    client, datetime(2025, 8, 1), datetime(2025, 8, 31),
+)
 ```
 
-Полный набор примеров с фильтрами, агрегациями и разбором
-видов документов — в `examples.py`.
+Даты — `datetime` или ISO-строка. Верхняя граница без времени
+(`2025-08-31` или полночь) расширяется до `23:59:59`.
 
----
+### Публичное API
 
-## Публичное API
-
-Все функции возвращают `list[MovementRecord]` и принимают:
-
-- `client: OData1C` — экземпляр клиента.
-- `date_from`, `date_to` — `datetime` или ISO-строка
-  `YYYY-MM-DDTHH:MM:SS`. Обязательные, границы включительно.
-- `organization=''` — GUID организации (`Catalog_Организации.Ref_Key`).
-- `warehouse=''` — GUID склада (`Catalog_СтруктурныеЕдиницы.Ref_Key`).
+Движения (`list[MovementRecord]`), параметры
+`client, date_from, date_to, organization='', warehouse=''`:
 
 | Функция | Что возвращает |
 |---|---|
 | `get_transfers`   | Перемещения между складами и межфирменные передачи. |
 | `get_write_offs`  | Списания запасов. |
-| `get_receipts`    | Оприходования, приходные ордера, приходные накладные, ввод начальных остатков, принятие к учёту. |
+| `get_receipts`    | Оприходования, приходные ордера и накладные, ввод начальных остатков, принятие к учёту. |
 | `get_expenses`    | Расходные ордера и расходные накладные. |
-| `get_all_movements` | Все виды разом; тип операции проставляется по виду документа. |
-| `list_recorder_types` | Уникальные `Recorder_Type` за период. Утилита: если в базе появился новый вид документа, пишущий в регистр движений — здесь его будет видно. |
+| `get_all_movements` | Все виды разом. |
+| `list_recorder_types` | Уникальные `Recorder_Type` за период. |
 
-Пример фильтра по складу:
+Остатки, продажи, обороты:
+
+| Функция | Что возвращает |
+|---|---|
+| `get_stock(client, warehouse, organization, nomenclature, only_positive)` | `list[StockRecord]` — текущие остатки. |
+| `get_stock_by_article(client, article)` | Остатки по артикулу. |
+| `get_marketplace_sales(client, date_from, date_to, channel=None)` | `list[SaleRecord]` из отчётов комиссионера. Канал (`WB`, `Ozon`, `Lamoda`) — по названию договора, склад и организация — из регистра `Продажи`. Возвраты с минусом. |
+| `get_retail_sales(client, date_from, date_to)` | Розница из отчётов о розничных продажах. |
+| `get_all_sales(client, date_from, date_to)` | Маркетплейсы + розница. |
+| `get_sales_turnover(client, date_from, date_to)` | `list[TurnoverRecord]` — выручка и себестоимость для валовой прибыли. |
+
+Товары и артикулы:
+
+| Функция | Что делает |
+|---|---|
+| `create_product(client, ProductData)` | Номенклатура, размеры-характеристики, штрихкоды, цены, цвет, фото. |
+| `get_product` / `update_product` / `delete_product` | Чтение, изменение, пометка на удаление по артикулу. |
+| `get_all_products` / `count_products` | Список товаров с пагинацией. |
+| `list_product_photos` / `get_photo_bytes` | Фото номенклатуры. |
+| `search_by_article` / `find_free_article` / `article_exists` / `get_nomenclature_by_article` | Поиск и подбор артикула. |
+
+Для записи цен нужен `ODATA_PRICE_TYPE_GUIDS`, для цвета —
+`ODATA_COLOR_PROP_GUID`. Значение по умолчанию подходит
+только для базы `Intreid_UNF_Copy4`.
+
+### Движения: детали
+
+Фильтр по складу:
 
 ```python
 from odata_1c import OData1C, get_all_movements
@@ -108,7 +160,7 @@ recs = get_all_movements(
 
 ---
 
-## Модель `MovementRecord`
+### Модель `MovementRecord`
 
 ```python
 @dataclass
@@ -153,7 +205,7 @@ class MovementRecord:
 
 ---
 
-## Как это устроено
+### Как это устроено
 
 1. Один запрос к регистру `ЗапасыНаСкладах_RecordType` за период,
    с фильтром по `Recorder_Type` (если в вызове задан набор видов
@@ -201,27 +253,48 @@ logging.basicConfig(level=logging.INFO)
 Всё, что выходит наружу, — потомки `ODataError`:
 
 - `ODataConnectionError` — сетевые проблемы, 5xx после повторов.
+- `ODataTimeoutError` — таймаут записи (POST / PATCH / DELETE).
 - `ODataAuthError` — 401 / 403.
 - `ODataNotFoundError` — 404 на конкретный ресурс.
-- `ODataValidationError` — ошибка валидации данных на стороне модуля.
+- `ODataValidationError` — прочие 4xx, не-JSON ответ, ошибка
+  валидации данных на стороне модуля.
+- `ArticleNotFoundError`, `ProductExistsError` — операции
+  с товарами.
 
-Клиент делает до `ODATA_MAX_RETRIES` повторов с экспоненциальным
-backoff (2, 4, 8 секунд) на сетевых ошибках и `RequestException`.
-`AuthError` и `NotFoundError` пробрасываются без ретраев.
+GET / HEAD повторяются до `ODATA_MAX_RETRIES` раз с
+экспоненциальным backoff (2, 4, 8 секунд) на сетевых ошибках
+и 5xx. Запись не повторяется никогда: после таймаута состояние
+в 1С неизвестно, повтор мог бы задвоить документ.
 
 ---
 
-## Структура пакета
+## Тесты
+
+```bash
+pip install -r app/backend/requirements.txt pytest
+python -m pytest
+```
+
+Тесты не ходят в 1С: чистые функции проверяются напрямую,
+продажи — через фейковый клиент.
+
+---
+
+## Структура
 
 ```
 odata_1c/
-    __init__.py       # публичные экспорты
     client.py         # HTTP-клиент OData1C (Basic Auth + retry)
     config.py         # чтение .env
     exceptions.py     # исключения
-    models.py         # dataclass MovementRecord
-    movements.py      # вся логика чтения движений
+    models.py         # dataclass-модели
+    movements.py      # товародвижение
+    stock.py          # остатки
+    sales.py          # продажи
+    turnover.py       # обороты для валовой прибыли
+    products.py       # CRUD товаров
+    search.py         # поиск по артикулу
+app/backend/          # FastAPI, синхронизация, SQLite
+app/web/              # React-интерфейс
+tests/                # pytest
 ```
-
-Единственный класс — `OData1C`. Единственная модель наружу —
-`MovementRecord`. Всё остальное — функции.

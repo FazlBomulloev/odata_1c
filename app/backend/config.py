@@ -6,8 +6,7 @@ load_dotenv()
 
 ODATA_BASE_URL = os.getenv(
     'ODATA_BASE_URL',
-    'http://95.213.212.125:8380/Intreid_UNF_Copy4/'
-    'odata/standard.odata',
+    'http://localhost/Intreid_UNF_Copy4/odata/standard.odata',
 )
 ODATA_LOGIN = os.getenv('ODATA_LOGIN', '')
 ODATA_PASSWORD = os.getenv('ODATA_PASSWORD', '')

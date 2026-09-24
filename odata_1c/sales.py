@@ -32,9 +32,7 @@ DOC_COMMISSION_RETURNS = (
 DOC_RETAIL = 'Document_ОтчетОРозничныхПродажах'
 DOC_RETAIL_SALES = 'Document_ОтчетОРозничныхПродажах_Запасы'
 CONTRACTS = 'Catalog_ДоговорыКонтрагентов'
-INCOME_EXPENSE_REG = (
-    'AccumulationRegister_ДоходыИРасходы_RecordType'
-)
+SALES_REG = 'AccumulationRegister_Продажи_RecordType'
 COMMISSION_RECORDER_TYPE = (
     f'{RECORDER_TYPE_PREFIX}{DOC_COMMISSION}'
 )
@@ -130,7 +128,22 @@ def _fetch_rows_by_refs(
         result.extend(data.get('value', []))
     return result
 
-def _fetch_commission_warehouses(
+def dims_by_recorder(rows) -> dict:
+    result: dict = {}
+    for r in rows:
+        rec = r.get('Recorder') or ''
+        if not rec:
+            continue
+        wh = r.get('Склад_Key') or ''
+        org = r.get('Организация_Key') or ''
+        prev = result.get(rec, ('', ''))
+        result[rec] = (
+            prev[0] or (wh if wh != EMPTY_GUID else ''),
+            prev[1] or (org if org != EMPTY_GUID else ''),
+        )
+    return result
+
+def _fetch_commission_dims(
     client: OData1C,
     date_from,
     date_to,
@@ -149,22 +162,20 @@ def _fetch_commission_warehouses(
     while True:
         params = {
             '$filter': flt,
-            '$select': 'Recorder,СтруктурнаяЕдиница_Key',
+            '$select': 'Recorder,Склад_Key,Организация_Key',
             '$top': str(PAGE_SIZE),
             '$skip': str(skip),
             '$orderby': 'Period,Recorder,LineNumber',
             '$format': 'json',
         }
         try:
-            data = client.get(INCOME_EXPENSE_REG, params)
+            data = client.get(SALES_REG, params)
         except ODataNotFoundError:
-            logger.warning(
-                'Регистр %s недоступен', INCOME_EXPENSE_REG,
-            )
+            logger.warning('Регистр %s недоступен', SALES_REG)
             return {}
         except ODataError as exc:
             logger.warning(
-                'Ошибка чтения %s: %s', INCOME_EXPENSE_REG, exc,
+                'Ошибка чтения %s: %s', SALES_REG, exc,
             )
             return {}
         page = data.get('value', [])
@@ -173,25 +184,10 @@ def _fetch_commission_warehouses(
             break
         skip += PAGE_SIZE
 
-    result: dict = {}
-    conflicts = 0
-    for r in rows:
-        rec = r.get('Recorder', '') or ''
-        wh = r.get('СтруктурнаяЕдиница_Key', '') or ''
-        if not rec or not wh or wh == EMPTY_GUID:
-            continue
-        prev = result.get(rec)
-        if prev is None:
-            result[rec] = wh
-        elif prev != wh:
-            conflicts += 1
-    if conflicts:
-        logger.warning(
-            'В %d ОтчетКомиссионера склад проводок неоднороден, '
-            'взят первый', conflicts,
-        )
+    result = dims_by_recorder(rows)
     logger.info(
-        'Комиссионер: сматчил склад для %d документов', len(result),
+        'Комиссионер: склад/организация для %d документов',
+        len(result),
     )
     return result
 
@@ -229,7 +225,7 @@ def _row_to_sale(
     nomenclature: dict,
     characteristics: dict,
     sign: int,
-    warehouse_by_ref: dict | None = None,
+    dims_by_ref: dict | None = None,
     warehouse_names: dict | None = None,
     organization_names: dict | None = None,
 ) -> SaleRecord:
@@ -256,20 +252,20 @@ def _row_to_sale(
         amount = -amount
 
     ref = header.get('Ref_Key', '') or ''
-    wh_key = ''
-    if warehouse_by_ref:
-        wh_key = warehouse_by_ref.get(ref, '') or ''
+    wh_key, org_key_reg = (dims_by_ref or {}).get(ref, ('', ''))
     warehouse = None
-    if wh_key and warehouse_names is not None:
-        warehouse = warehouse_names.get(wh_key) or wh_key
+    if wh_key:
+        names = warehouse_names or {}
+        warehouse = names.get(wh_key) or wh_key
 
-    org_key = header.get('Организация_Key', '') or ''
+    org_key = header.get('Организация_Key') or ''
+    if org_key == EMPTY_GUID:
+        org_key = ''
+    org_key = org_key or org_key_reg
     organization = None
-    if org_key and org_key != EMPTY_GUID:
-        if organization_names is not None:
-            organization = organization_names.get(org_key) or org_key
-        else:
-            organization = org_key
+    if org_key:
+        names = organization_names or {}
+        organization = names.get(org_key) or org_key
 
     return SaleRecord(
         nomenclature_key=nom_key,
@@ -294,7 +290,7 @@ def _build_records(
     sale_type: str,
     sign: int,
     channel_filter: str | None = None,
-    warehouse_by_ref: dict | None = None,
+    dims_by_ref: dict | None = None,
     warehouse_names: dict | None = None,
     organization_names: dict | None = None,
 ) -> list[SaleRecord]:
@@ -310,7 +306,7 @@ def _build_records(
         result.append(_row_to_sale(
             row, header, channel, sale_type,
             nomenclature, characteristics, sign,
-            warehouse_by_ref=warehouse_by_ref,
+            dims_by_ref=dims_by_ref,
             warehouse_names=warehouse_names,
             organization_names=organization_names,
         ))
@@ -387,16 +383,16 @@ def get_marketplace_sales(
         client, rows_sales, rows_returns,
     )
 
-    warehouse_by_ref = _fetch_commission_warehouses(
-        client, date_from, date_to,
-    )
-    warehouse_by_ref = {
-        ref: wh for ref, wh in warehouse_by_ref.items()
+    dims_by_ref = {
+        ref: dims
+        for ref, dims in _fetch_commission_dims(
+            client, date_from, date_to,
+        ).items()
         if ref in wanted_refs
     }
     warehouse_names = _resolve_names(
         client,
-        set(warehouse_by_ref.values()),
+        {wh for wh, _ in dims_by_ref.values() if wh},
         WAREHOUSES_CATALOG,
     )
     org_keys = {
@@ -404,6 +400,7 @@ def get_marketplace_sales(
         for h in headers
         if h['Ref_Key'] in wanted_refs
     }
+    org_keys.update(org for _, org in dims_by_ref.values() if org)
     organization_names = _resolve_names(
         client, org_keys, ORGS_CATALOG,
     )
@@ -414,7 +411,7 @@ def get_marketplace_sales(
         nomenclature, characteristics,
         sale_type=TYPE_SALE, sign=1,
         channel_filter=channel,
-        warehouse_by_ref=warehouse_by_ref,
+        dims_by_ref=dims_by_ref,
         warehouse_names=warehouse_names,
         organization_names=organization_names,
     ))
@@ -423,7 +420,7 @@ def get_marketplace_sales(
         nomenclature, characteristics,
         sale_type=TYPE_RETURN, sign=-1,
         channel_filter=channel,
-        warehouse_by_ref=warehouse_by_ref,
+        dims_by_ref=dims_by_ref,
         warehouse_names=warehouse_names,
         organization_names=organization_names,
     ))
