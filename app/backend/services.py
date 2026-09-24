@@ -2,7 +2,6 @@ import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime
-from typing import Any
 
 from odata_1c.movements import (
     BATCH_KEYS,
@@ -33,15 +32,18 @@ from odata_1c.search import _esc
 from odata_1c.sales import (
     CHANNEL_RETAIL,
     CHANNEL_UNKNOWN,
+    COMMISSION_RECORDER_TYPE,
     CONTRACTS,
     DOC_COMMISSION,
     DOC_COMMISSION_RETURNS,
     DOC_COMMISSION_SALES,
     DOC_RETAIL,
     DOC_RETAIL_SALES,
+    SALES_REG,
     TYPE_RETURN,
     TYPE_SALE,
     _resolve_channel,
+    dims_by_recorder,
 )
 from odata_1c.stock import QTY_FIELDS, STOCK, _row_qty
 
@@ -191,42 +193,27 @@ def _size_from(
     _, _, size = _parse_size(descr, article or '')
     return size or None
 
-SALES_RECORDS = 'AccumulationRegister_Продажи_RecordType'
-
 async def _fetch_recorder_dims(
     client: AsyncOData1C,
     date_from: datetime,
     date_to: datetime,
-    recorder_type: str,
 ) -> dict:
     if date_from < MIN_PERIOD:
         date_from = MIN_PERIOD
     flt = (
         f"Period ge datetime'{_iso(date_from)}' and "
         f"Period le datetime'{_iso_to(date_to)}' and "
-        f"Recorder_Type eq 'StandardODATA.{recorder_type}'"
+        f"Recorder_Type eq '{COMMISSION_RECORDER_TYPE}'"
     )
     rows = await _paginate(
-        client, SALES_RECORDS,
+        client, SALES_REG,
         {
             '$filter': flt,
             '$select': 'Recorder,Склад_Key,Организация_Key',
             '$orderby': 'Period,Recorder,LineNumber',
         },
     )
-    result: dict = {}
-    for r in rows:
-        rec = r.get('Recorder') or ''
-        wh = r.get('Склад_Key') or ''
-        org = r.get('Организация_Key') or ''
-        if not rec:
-            continue
-        prev = result.get(rec, ('', ''))
-        result[rec] = (
-            prev[0] or (wh if wh != EMPTY_GUID else ''),
-            prev[1] or (org if org != EMPTY_GUID else ''),
-        )
-    return result
+    return dims_by_recorder(rows)
 
 async def fetch_marketplace_sales(
     client: AsyncOData1C,
@@ -283,10 +270,7 @@ async def fetch_marketplace_sales(
     rows_sales, rows_returns, dims_by_ref = await asyncio.gather(
         _batch_by_keys(client, DOC_COMMISSION_SALES, refs),
         _batch_by_keys(client, DOC_COMMISSION_RETURNS, refs),
-        _fetch_recorder_dims(
-            client, date_from, date_to,
-            recorder_type='Document_ОтчетКомиссионера',
-        ),
+        _fetch_recorder_dims(client, date_from, date_to),
     )
 
     nom_keys: set = set()
@@ -355,9 +339,12 @@ async def fetch_marketplace_sales(
             warehouse = None
             if wh_key:
                 warehouse = warehouse_names.get(wh_key) or wh_key
-            org_key = hdr.get('Организация_Key') or org_key_reg or ''
+            org_key = hdr.get('Организация_Key') or ''
+            if org_key == EMPTY_GUID:
+                org_key = ''
+            org_key = org_key or org_key_reg
             organization = None
-            if org_key and org_key != EMPTY_GUID:
+            if org_key:
                 organization = (
                     organization_names.get(org_key) or org_key
                 )

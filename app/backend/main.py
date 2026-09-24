@@ -11,6 +11,7 @@ from fastapi.responses import Response
 
 from odata_1c.exceptions import (
     ArticleNotFoundError,
+    ODataError,
     ODataNotFoundError,
     ODataValidationError,
     ProductExistsError,
@@ -77,7 +78,6 @@ from .schemas import (
     MarketplaceSalesRequest,
     MovementsRequest,
     ProductCreate,
-    ProductListItem,
     ProductUpdate,
     RetailSalesRequest,
     RunDetail,
@@ -872,7 +872,7 @@ async def api_products_list(
                 include_service=include_service,
             ),
         )
-    except Exception as exc:
+    except ODataError as exc:
         logger.exception('Ошибка получения товаров')
         raise HTTPException(status_code=502, detail=str(exc))
     return {
@@ -893,7 +893,7 @@ async def api_products_next_article(
 ):
     try:
         article = await next_article_async(prefix)
-    except Exception as exc:
+    except ODataError as exc:
         logger.exception('Ошибка подбора артикула')
         raise HTTPException(status_code=502, detail=str(exc))
     return {'article': article}
@@ -905,7 +905,7 @@ async def api_products_exists(
 ):
     try:
         exists = await article_exists_async(article)
-    except Exception as exc:
+    except ODataError as exc:
         logger.exception('Ошибка проверки артикула')
         raise HTTPException(status_code=502, detail=str(exc))
     return {'article': article, 'exists': exists}
@@ -917,7 +917,7 @@ async def api_products_search(
 ):
     try:
         articles = await search_articles_async(prefix)
-    except Exception as exc:
+    except ODataError as exc:
         logger.exception('Ошибка поиска артикулов')
         raise HTTPException(status_code=502, detail=str(exc))
     return {'prefix': prefix, 'articles': articles}
@@ -929,7 +929,7 @@ async def api_products_photo(file_key: str):
         content, ext = await photo_bytes_async(file_key)
     except ODataNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    except Exception as exc:
+    except (ODataError, ValueError) as exc:
         logger.exception('Ошибка получения фото')
         raise HTTPException(status_code=502, detail=str(exc))
     mime = _EXT_MIME.get(ext.lower(), 'application/octet-stream')
@@ -946,7 +946,7 @@ async def api_products_get(article: str):
         data = await get_product_async(article)
     except ArticleNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    except Exception as exc:
+    except ODataError as exc:
         logger.exception('Ошибка получения товара')
         raise HTTPException(status_code=502, detail=str(exc))
     return data
@@ -967,7 +967,7 @@ async def api_products_create(req: ProductCreate):
             )
         try:
             article = await next_article_async(prefix)
-        except Exception as exc:
+        except ODataError as exc:
             logger.exception('Ошибка подбора артикула')
             raise HTTPException(
                 status_code=502, detail=str(exc),
@@ -980,7 +980,7 @@ async def api_products_create(req: ProductCreate):
         raise HTTPException(status_code=409, detail=str(exc))
     except ODataValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    except Exception as exc:
+    except ODataError as exc:
         logger.exception('Ошибка создания товара')
         raise HTTPException(status_code=502, detail=str(exc))
     return {'article': article, 'result': result}
@@ -1023,7 +1023,7 @@ async def api_products_update(
         raise HTTPException(status_code=404, detail=str(exc))
     except ODataValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    except Exception as exc:
+    except ODataError as exc:
         logger.exception('Ошибка обновления товара')
         raise HTTPException(status_code=502, detail=str(exc))
     return result
@@ -1035,7 +1035,7 @@ async def api_products_delete(article: str):
         await delete_product_async(article)
     except ArticleNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    except Exception as exc:
+    except ODataError as exc:
         logger.exception('Ошибка удаления товара')
         raise HTTPException(status_code=502, detail=str(exc))
     return {'ok': True, 'article': article}
